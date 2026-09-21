@@ -61,6 +61,38 @@ final class ARScanController: NSObject, ObservableObject {
     func stop() { session.pause(); isRunning = false; pipelineState = "Scan gestopt" }
     func arSession() -> ARSession { session }
 
+    func injectFittedGeometryForDevelopment(
+        widthsMM: [Double],
+        heightsMM: [Double],
+        uncertaintyMM: Double
+    ) {
+        guard !widthsMM.isEmpty, !heightsMM.isEmpty else { return }
+
+        geometry.widthSections = widthsMM.enumerated().map { index, value in
+            OpeningSection(
+                normalizedPosition: widthsMM.count == 1 ? 0.5 : Double(index) / Double(widthsMM.count - 1),
+                freeSize: MeasuredValue(
+                    millimetres: value,
+                    uncertaintyMillimetres: uncertaintyMM,
+                    source: .calculated
+                )
+            )
+        }
+
+        geometry.heightSections = heightsMM.enumerated().map { index, value in
+            OpeningSection(
+                normalizedPosition: heightsMM.count == 1 ? 0.5 : Double(index) / Double(heightsMM.count - 1),
+                freeSize: MeasuredValue(
+                    millimetres: value,
+                    uncertaintyMillimetres: uncertaintyMM,
+                    source: .calculated
+                )
+            )
+        }
+
+        estimatedUncertaintyMM = uncertaintyMM
+    }
+
     private func handleOpeningObservation(_ observation: OpeningObservation?) {
         guard let observation else { return }
         openingTracker.add(observation)

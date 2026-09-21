@@ -19,6 +19,7 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSCameraUsageDescription: BREBO Sparingsmeter gebruikt de camera en LiDAR om sparingen automatisch in 3D te meten.
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIRequiredDeviceCapabilities: "arkit"
         TARGETED_DEVICE_FAMILY: "1,2"
     dependencies: []

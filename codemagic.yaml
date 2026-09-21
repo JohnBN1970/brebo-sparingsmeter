@@ -26,6 +26,10 @@ workflows:
         script: |
           xcodegen generate
 
+      - name: Set Sparingsmeter build number
+        script: |
+          xcrun agvtool new-version -all "$BUILD_NUMBER"
+
       - name: Show project settings
         script: |
           xcodebuild \
@@ -57,3 +61,7 @@ workflows:
       - /tmp/xcodebuild_logs/*.log
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration

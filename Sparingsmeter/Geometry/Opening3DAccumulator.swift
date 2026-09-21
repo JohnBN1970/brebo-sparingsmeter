@@ -29,10 +29,10 @@ struct Opening3DAccumulator {
         top.append(contentsOf: clouds.top)
         bottom.append(contentsOf: clouds.bottom)
 
-        trim(&left)
-        trim(&right)
-        trim(&top)
-        trim(&bottom)
+        Self.trim(&left, maximum: maxPointsPerEdge)
+        Self.trim(&right, maximum: maxPointsPerEdge)
+        Self.trim(&top, maximum: maxPointsPerEdge)
+        Self.trim(&bottom, maximum: maxPointsPerEdge)
     }
 
     var measurement: LiveOpeningMeasurement? {
@@ -78,8 +78,8 @@ struct Opening3DAccumulator {
         return points.reduce(SIMD3<Float>(repeating: 0), +) / Float(points.count)
     }
 
-    private mutating func trim(_ points: inout [SIMD3<Float>]) {
-        guard points.count > maxPointsPerEdge else { return }
-        points.removeFirst(points.count - maxPointsPerEdge)
+    private static func trim(_ points: inout [SIMD3<Float>], maximum: Int) {
+        guard points.count > maximum else { return }
+        points.removeFirst(points.count - maximum)
     }
 }

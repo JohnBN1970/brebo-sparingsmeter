@@ -18,17 +18,18 @@ final class ARScanController: NSObject, ObservableObject {
     @Published private(set) var liveHeightMM: Double?
     @Published private(set) var live3DPointCount: Int = 0
 
-    // Practical-test diagnostics. These deliberately expose where the live
-    // pipeline stops so field testing can diagnose Vision vs LiDAR vs fitting.
     @Published private(set) var depthFrameCount: Int = 0
     @Published private(set) var accepted3DFrameCount: Int = 0
     @Published private(set) var lastEdgePointCounts = (left: 0, right: 0, top: 0, bottom: 0)
+    @Published private(set) var partialVerticalPointCount: Int = 0
+    @Published private(set) var partialHorizontalPointCount: Int = 0
     @Published private(set) var pipelineState: String = "Wacht op scan"
 
     private let session = ARSession()
     private let openingDetector = VisionOpeningDetector()
     private var openingTracker = MultiFrameOpeningTracker()
     private var opening3D = Opening3DAccumulator()
+    private var partialOpening = PartialOpeningAccumulator()
 
     private var frameCount = 0
     private var acceptedDepthFrameCount = 0
@@ -74,6 +75,7 @@ final class ARScanController: NSObject, ObservableObject {
 
         openingTracker.reset()
         opening3D.reset()
+        partialOpening.reset()
         latestTrackedOpening = nil
 
         openingDetected = false
@@ -87,7 +89,9 @@ final class ARScanController: NSObject, ObservableObject {
         depthFrameCount = 0
         accepted3DFrameCount = 0
         lastEdgePointCounts = (0, 0, 0, 0)
-        pipelineState = "Zoekt sparing"
+        partialVerticalPointCount = 0
+        partialHorizontalPointCount = 0
+        pipelineState = "Deelscan actief - beweeg langs zichtbare randen"
 
         isRunning = true
     }
@@ -135,53 +139,58 @@ final class ARScanController: NSObject, ObservableObject {
     }
 
     private func handleOpeningObservation(_ observation: OpeningObservation?) {
-        guard let observation else {
-            if latestTrackedOpening == nil {
-                pipelineState = "Vision: nog geen sparing"
-            }
-            return
-        }
+        guard let observation else { return }
 
         openingTracker.add(observation)
-        guard let tracked = openingTracker.trackedOpening else {
-            pipelineState = "Vision: meer frames nodig"
-            return
-        }
+        guard let tracked = openingTracker.trackedOpening else { return }
 
         latestTrackedOpening = tracked
         openingDetected = true
         openingDetectionConfidence = tracked.meanConfidence
         openingTrackingStability = tracked.stability
         openingObservationCount = tracked.observationCount
-        pipelineState = "Vision OK - LiDAR bemonsteren"
     }
 
-    private func ingest3D(frame: ARFrame) {
+    private func ingestPartial3D(frame: ARFrame) {
+        guard let candidates = DepthSweepSampler.sampleWorldEdgeCandidates(frame: frame) else {
+            return
+        }
+
+        partialOpening.add(candidates)
+        partialVerticalPointCount = partialOpening.vertical.count
+        partialHorizontalPointCount = partialOpening.horizontal.count
+
+        guard let measurement = partialOpening.measurement else {
+            if latestTrackedOpening == nil {
+                pipelineState = "Deelscan: lokale 3D-randen verzamelen"
+            }
+            return
+        }
+
+        if opening3D.measurement == nil {
+            liveWidthMM = measurement.widthMM
+            liveHeightMM = measurement.heightMM
+            live3DPointCount = measurement.verticalPointCount + measurement.horizontalPointCount
+            pipelineState = "Deelscan 3D actief"
+        }
+    }
+
+    private func ingestVisionGuided3D(frame: ARFrame) {
         guard frame.sceneDepth != nil else {
             pipelineState = "Geen sceneDepth"
             return
         }
 
         guard let tracked = latestTrackedOpening else {
-            pipelineState = "Wacht op Vision-detectie"
             return
         }
 
-        // Do not require a fixed image-space rectangle. The camera is meant to
-        // move around the opening. We use the latest corners and let the 3D
-        // robust line fit reject depth outliers.
-        guard tracked.observationCount >= 5 else {
-            pipelineState = "Te weinig Vision-frames"
-            return
-        }
+        guard tracked.observationCount >= 5 else { return }
 
         guard let clouds = DepthEdgeSampler.sampleWorldPoints(
             tracked: tracked,
             frame: frame
-        ) else {
-            pipelineState = "LiDAR: geen punten"
-            return
-        }
+        ) else { return }
 
         lastEdgePointCounts = (
             clouds.left.count,
@@ -190,8 +199,6 @@ final class ARScanController: NSObject, ObservableObject {
             clouds.bottom.count
         )
 
-        // Require usable support on every side, not a high image-space
-        // stability percentage.
         let minimumPerEdge = 4
         guard
             clouds.left.count >= minimumPerEdge,
@@ -199,30 +206,27 @@ final class ARScanController: NSObject, ObservableObject {
             clouds.top.count >= minimumPerEdge,
             clouds.bottom.count >= minimumPerEdge
         else {
-            pipelineState = "LiDAR: onvoldoende punten per zijde"
+            if partialOpening.measurement == nil {
+                pipelineState = "Vision herkend; deelscan vult ontbrekende randen"
+            }
             return
         }
 
         opening3D.add(clouds)
         accepted3DFrameCount += 1
-        live3DPointCount = opening3D.measurement?.pointCount ?? 0
+        live3DPointCount = opening3D.measurement?.pointCount ?? live3DPointCount
 
         guard let measurement = opening3D.measurement else {
-            pipelineState = "3D: lijnfit opbouwen"
+            pipelineState = "Volledige 3D-geometrie opbouwen"
             return
         }
 
         liveWidthMM = measurement.widthMM
         liveHeightMM = measurement.heightMM
-        pipelineState = "3D-meting actief"
+        pipelineState = "Volledige 3D-meting actief"
 
-        // Fit residual is real, but total metrological uncertainty still needs
-        // calibration against known references. Until that validation exists,
-        // never publish < 2.5 mm even when the raw fit residual is smaller.
         estimatedUncertaintyMM = max(2.5, measurement.fitResidualMM)
 
-        // Only materialise production geometry when the validated uncertainty
-        // gate can actually be satisfied. For now this intentionally remains closed.
         if estimatedUncertaintyMM ?? 999 <= MeasurementRules.maximumMeasurementDeviationMM {
             geometry.widthSections = [
                 OpeningSection(
@@ -263,15 +267,20 @@ extension ARScanController: ARSessionDelegate {
                 self.depthFrameCount = self.acceptedDepthFrameCount
             }
 
-            self.ingest3D(frame: frame)
+            self.ingestPartial3D(frame: frame)
+            self.ingestVisionGuided3D(frame: frame)
 
             let depthCoverage = min(1.0, Double(self.acceptedDepthFrameCount) / 120.0)
-            let edgeCoverage = min(1.0, Double(self.openingObservationCount) / 45.0)
+            let visionCoverage = min(1.0, Double(self.openingObservationCount) / 45.0)
+            let partialCoverage = min(
+                1.0,
+                Double(min(self.partialVerticalPointCount, self.partialHorizontalPointCount)) / 900.0
+            )
             let cloudCoverage = min(1.0, Double(self.live3DPointCount) / 800.0)
 
             self.coverage = min(
                 depthCoverage,
-                max(edgeCoverage * 0.8, cloudCoverage)
+                max(max(visionCoverage * 0.8, partialCoverage), cloudCoverage)
             )
         }
 

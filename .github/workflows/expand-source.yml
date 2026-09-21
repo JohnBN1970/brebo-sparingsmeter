@@ -1,0 +1,36 @@
+name: Expand Sparingsmeter source
+
+on:
+  push:
+    paths:
+      - '.github/workflows/expand-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  expand:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Expand build source into repository root
+        run: |
+          set -e
+          rm -rf /tmp/sparingsmeter
+          mkdir -p /tmp/sparingsmeter
+          unzip -q brebo-sparingsmeter-build-v0.8.zip -d /tmp/sparingsmeter
+          cp -R /tmp/sparingsmeter/brebo-sparingsmeter/Sparingsmeter .
+          cp -R /tmp/sparingsmeter/brebo-sparingsmeter/SparingsmeterTests .
+          rm -f brebo-sparingsmeter-build-v0.8.zip
+      - name: Commit expanded source
+        run: |
+          git config user.name "BREBO Build Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add Sparingsmeter SparingsmeterTests brebo-sparingsmeter-build-v0.8.zip
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+          else
+            git commit -m "Add Sparingsmeter iOS source"
+            git push
+          fi

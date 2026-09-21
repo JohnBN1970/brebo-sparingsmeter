@@ -13,6 +13,26 @@ The Sparingsmeter is the first product built on a reusable scan kernel.
 - uncertainty estimation
 - source provenance: measured / detected / calculated / user
 
+## Core scanning rule
+
+The complete opening must never be required to fit in the camera image.
+
+The operator must be able to start at any visible part of the opening and move along local edges, corners and reveals. Every accepted local observation is transformed into the shared ARKit world coordinate system and fused there.
+
+Vision rectangle detection is an optional accelerator only. It may seed or label candidate edges when the complete opening is visible, but it must not gate the scan.
+
+The scan kernel must support:
+
+- partial opening observations
+- local left/right/top/bottom edge segments
+- corners observed at different times
+- stitching multiple sweeps into one opening model
+- large and coupled frames that never fit in one image
+- temporary occlusion by scaffolding, furniture or occupants
+- measuring from inside where the outside is inaccessible
+
+Missing edges may be completed later in the same scan. Final dimensions are calculated only after the world-space geometry has sufficient support and meets the metrology gate.
+
 ## Product 1: Sparingsmeter
 
 Output:

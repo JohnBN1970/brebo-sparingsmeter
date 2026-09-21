@@ -17,9 +17,11 @@ final class GeometryMathTests: XCTestCase {
             intrinsics: intrinsics
         )
 
-        XCTAssertEqual(point?.x, 0, accuracy: 0.0001)
-        XCTAssertEqual(point?.y, 0, accuracy: 0.0001)
-        XCTAssertEqual(point?.z, -2, accuracy: 0.0001)
+        XCTAssertNotNil(point)
+        guard let point else { return }
+        XCTAssertEqual(Double(point.x), 0.0, accuracy: 0.0001)
+        XCTAssertEqual(Double(point.y), 0.0, accuracy: 0.0001)
+        XCTAssertEqual(Double(point.z), -2.0, accuracy: 0.0001)
     }
 
     func testRobustLineFitRejectsOneOutlier() {

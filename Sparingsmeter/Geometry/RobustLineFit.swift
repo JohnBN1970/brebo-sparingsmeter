@@ -47,7 +47,9 @@ enum RobustLineFit {
             covariance.columns.2 += d * d.z
         }
 
-        covariance /= count
+        covariance.columns.0 /= count
+        covariance.columns.1 /= count
+        covariance.columns.2 /= count
 
         // Power iteration: dominante eigenvector = hoofdrichting.
         var direction = SIMD3<Float>(1, 1, 1)

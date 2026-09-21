@@ -41,7 +41,7 @@ struct ScanView: View {
             if scanner.openingDetected {
                 HStack(spacing: 12) {
                     Label(
-                        "\(scanner.openingObservationCount) frames",
+                        "\(scanner.openingObservationCount) Vision frames",
                         systemImage: "camera.viewfinder"
                     )
                     Spacer()
@@ -50,7 +50,7 @@ struct ScanView: View {
                 }
                 .font(.caption)
             } else {
-                Label("Zoek de volledige sparing in beeld", systemImage: "viewfinder")
+                Label("Deelscan actief - volledige sparing hoeft niet in beeld", systemImage: "viewfinder")
                     .font(.caption)
             }
 
@@ -65,12 +65,15 @@ struct ScanView: View {
                 if let uncertainty = scanner.estimatedUncertaintyMM {
                     Text(String(format: "berekende onzekerheid +/- %.1f mm", uncertainty))
                         .font(.caption)
+                } else {
+                    Text("voorlopige deelscan - nog niet vrijgegeven als productiemaat")
+                        .font(.caption)
                 }
             }
 
             switch scanner.quality {
             case .insufficientCoverage:
-                Label("Blijf rustig langs de sparing bewegen", systemImage: "move.3d")
+                Label("Beweeg rustig langs de zichtbare randen en negge", systemImage: "move.3d")
             case .uncertaintyTooHigh(let mm):
                 Label(
                     String(format: "Nog onvoldoende nauwkeurig: +/- %.1f mm", mm),
@@ -101,8 +104,14 @@ struct ScanView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(scanner.pipelineState)
                 .font(.caption.bold())
+
             Text(
-                "LiDAR \(scanner.depthFrameCount)f | 3D \(scanner.accepted3DFrameCount)f | punten L\(scanner.lastEdgePointCounts.left) R\(scanner.lastEdgePointCounts.right) B\(scanner.lastEdgePointCounts.top) O\(scanner.lastEdgePointCounts.bottom)"
+                "LiDAR \(scanner.depthFrameCount)f | 3D \(scanner.accepted3DFrameCount)f | Vision L\(scanner.lastEdgePointCounts.left) R\(scanner.lastEdgePointCounts.right) B\(scanner.lastEdgePointCounts.top) O\(scanner.lastEdgePointCounts.bottom)"
+            )
+            .font(.caption2.monospaced())
+
+            Text(
+                "Deelscan verticaal \(scanner.partialVerticalPointCount) | horizontaal \(scanner.partialHorizontalPointCount)"
             )
             .font(.caption2.monospaced())
         }
@@ -112,7 +121,7 @@ struct ScanView: View {
     }
 
     private var instructionPanel: some View {
-        Text("Geen punten aanwijzen. Houd eerst de hele sparing in beeld en beweeg daarna rustig langs alle vier zijden. Kijk ook schuin in de negge.")
+        Text("Geen punten aanwijzen. De volledige sparing hoeft niet in beeld. Begin bij een zichtbare rand en beweeg rustig langs stijlen, dorpels, bovendorpel en negge. Ontbrekende delen kun je later in dezelfde scan meenemen.")
             .font(.callout)
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)

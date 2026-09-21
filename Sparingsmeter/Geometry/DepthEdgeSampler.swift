@@ -16,6 +16,23 @@ struct EdgePointClouds: Sendable {
 }
 
 enum DepthEdgeSampler {
+    /// Vision receives ARKit's landscape sensor image with orientation `.right`
+    /// so Vision returns normalized coordinates in the rotated portrait image.
+    /// The sceneDepth map, however, remains in the raw sensor orientation.
+    ///
+    /// Convert the Vision point back into raw depth-pixel coordinates before
+    /// back-projection. Mapping the rotated coordinates directly to the depth
+    /// image distorts both location and scale.
+    static func visionPointToDepthPixel(
+        _ p: CGPoint,
+        depthWidth: Int,
+        depthHeight: Int
+    ) -> CGPoint {
+        let rawX = (1.0 - p.y) * CGFloat(depthWidth - 1)
+        let rawY = (1.0 - p.x) * CGFloat(depthHeight - 1)
+        return CGPoint(x: rawX, y: rawY)
+    }
+
     static func sampleWorldPoints(
         tracked: TrackedOpening,
         frame: ARFrame,
@@ -63,10 +80,11 @@ enum DepthEdgeSampler {
         depthIntr.columns.2.y *= sy
 
         func visionToDepthPixel(_ p: CGPoint) -> CGPoint {
-            // Vision origin is bottom-left. Camera/depth pixel origin is top-left.
-            let x = p.x * CGFloat(depthWidth - 1)
-            let y = (1.0 - p.y) * CGFloat(depthHeight - 1)
-            return CGPoint(x: x, y: y)
+            Self.visionPointToDepthPixel(
+                p,
+                depthWidth: depthWidth,
+                depthHeight: depthHeight
+            )
         }
 
         func interpolate(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {

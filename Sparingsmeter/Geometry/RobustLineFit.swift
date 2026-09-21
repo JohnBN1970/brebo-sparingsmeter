@@ -35,7 +35,10 @@ enum RobustLineFit {
         let count = Float(points.count)
         let centroid = points.reduce(SIMD3<Float>(repeating: 0), +) / count
 
-        var covariance = simd_float3x3(repeating: 0)
+        var covariance = simd_float3x3()
+        covariance.columns.0 = SIMD3<Float>(repeating: 0)
+        covariance.columns.1 = SIMD3<Float>(repeating: 0)
+        covariance.columns.2 = SIMD3<Float>(repeating: 0)
 
         for point in points {
             let d = point - centroid

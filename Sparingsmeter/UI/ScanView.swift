@@ -10,8 +10,9 @@ struct ScanView: View {
             ARViewContainer(controller: scanner)
                 .ignoresSafeArea()
 
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 statusPanel
+                diagnosticPanel
                 Spacer()
                 instructionPanel
                 controls
@@ -44,7 +45,7 @@ struct ScanView: View {
                         systemImage: "camera.viewfinder"
                     )
                     Spacer()
-                    Text("\(Int(scanner.openingTrackingStability * 100))% stabiel")
+                    Text("\(Int(scanner.openingTrackingStability * 100))% vormvast")
                         .monospacedDigit()
                 }
                 .font(.caption)
@@ -94,6 +95,20 @@ struct ScanView: View {
         }
         .padding()
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var diagnosticPanel: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(scanner.pipelineState)
+                .font(.caption.bold())
+            Text(
+                "LiDAR \(scanner.depthFrameCount)f | 3D \(scanner.accepted3DFrameCount)f | punten L\(scanner.lastEdgePointCounts.left) R\(scanner.lastEdgePointCounts.right) B\(scanner.lastEdgePointCounts.top) O\(scanner.lastEdgePointCounts.bottom)"
+            )
+            .font(.caption2.monospaced())
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var instructionPanel: some View {

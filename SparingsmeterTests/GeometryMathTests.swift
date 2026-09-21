@@ -24,6 +24,28 @@ final class GeometryMathTests: XCTestCase {
         XCTAssertEqual(Double(point.z), -2.0, accuracy: 0.0001)
     }
 
+    func testVisionRightOrientationMapsBackToRawDepthPixels() {
+        let topLeftPortrait = CGPoint(x: 0, y: 1)
+        let mapped = DepthEdgeSampler.visionPointToDepthPixel(
+            topLeftPortrait,
+            depthWidth: 256,
+            depthHeight: 192
+        )
+
+        XCTAssertEqual(Double(mapped.x), 0.0, accuracy: 0.001)
+        XCTAssertEqual(Double(mapped.y), 191.0, accuracy: 0.001)
+
+        let bottomRightPortrait = CGPoint(x: 1, y: 0)
+        let mappedBR = DepthEdgeSampler.visionPointToDepthPixel(
+            bottomRightPortrait,
+            depthWidth: 256,
+            depthHeight: 192
+        )
+
+        XCTAssertEqual(Double(mappedBR.x), 255.0, accuracy: 0.001)
+        XCTAssertEqual(Double(mappedBR.y), 0.0, accuracy: 0.001)
+    }
+
     func testRobustLineFitRejectsOneOutlier() {
         var points: [SIMD3<Float>] = []
 

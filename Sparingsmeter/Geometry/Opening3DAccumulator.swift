@@ -14,7 +14,7 @@ struct Opening3DAccumulator {
     private(set) var top: [SIMD3<Float>] = []
     private(set) var bottom: [SIMD3<Float>] = []
 
-    let maxPointsPerEdge = 1200
+    let maxPointsPerEdge = 1600
 
     mutating func reset() {
         left.removeAll(keepingCapacity: true)
@@ -24,6 +24,9 @@ struct Opening3DAccumulator {
     }
 
     mutating func add(_ clouds: EdgePointClouds) {
+        // L/R/T/B are only candidate labels from Vision. They are retained for
+        // diagnostics, but measurement below deliberately rebuilds the physical
+        // opening from the combined ARKit world-space cloud.
         left.append(contentsOf: clouds.left)
         right.append(contentsOf: clouds.right)
         top.append(contentsOf: clouds.top)
@@ -36,51 +39,58 @@ struct Opening3DAccumulator {
     }
 
     var measurement: LiveOpeningMeasurement? {
-        // First establish the physical opening plane from all accumulated
-        // world-space points. The dimensions are then measured in this local
-        // coordinate frame, so camera translation/rotation no longer changes
-        // which direction counts as width.
         let all = left + right + top + bottom
-        guard all.count >= 32, let frame = localFrame(points: all) else { return nil }
+        guard all.count >= 80, let frame = localFrame(points: all) else { return nil }
 
-        let projectedLeft = left.map { project($0, frame: frame) }
-        let projectedRight = right.map { project($0, frame: frame) }
-        let projectedTop = top.map { project($0, frame: frame) }
-        let projectedBottom = bottom.map { project($0, frame: frame) }
+        let uv = all.map { project($0, frame: frame) }
+        let us = uv.map(\.x)
+        let vs = uv.map(\.y)
+
+        // Reconstruct boundaries from world-space position rather than Vision's
+        // image-space side name. Trim the outer 5% to reject glass/background
+        // depth spikes, then use narrow boundary bands to estimate each edge.
+        let uLo = percentile(us, fraction: 0.05)
+        let uHi = percentile(us, fraction: 0.95)
+        let vLo = percentile(vs, fraction: 0.05)
+        let vHi = percentile(vs, fraction: 0.95)
+
+        guard uHi - uLo > 0.10, vHi - vLo > 0.10 else { return nil }
+
+        let uBand = max(0.025, (uHi - uLo) * 0.10)
+        let vBand = max(0.025, (vHi - vLo) * 0.10)
+
+        let leftBand = uv.filter { $0.x <= uLo + uBand }.map(\.x)
+        let rightBand = uv.filter { $0.x >= uHi - uBand }.map(\.x)
+        let bottomBand = uv.filter { $0.y <= vLo + vBand }.map(\.y)
+        let topBand = uv.filter { $0.y >= vHi - vBand }.map(\.y)
 
         guard
-            projectedLeft.count >= 8,
-            projectedRight.count >= 8,
-            projectedTop.count >= 8,
-            projectedBottom.count >= 8
+            leftBand.count >= 8, rightBand.count >= 8,
+            bottomBand.count >= 8, topBand.count >= 8
         else { return nil }
 
-        // Robust medians prevent a few depth samples on glass/background from
-        // dragging a complete edge to the wrong location.
-        let leftU = median(projectedLeft.map(\.x))
-        let rightU = median(projectedRight.map(\.x))
-        let topV = median(projectedTop.map(\.y))
-        let bottomV = median(projectedBottom.map(\.y))
+        let leftU = median(leftBand)
+        let rightU = median(rightBand)
+        let bottomV = median(bottomBand)
+        let topV = median(topBand)
 
         let widthMM = Double(abs(rightU - leftU)) * 1000.0
         let heightMM = Double(abs(topV - bottomV)) * 1000.0
-
-        // Reject collapsed/cross-associated geometry. A window opening cannot
-        // sensibly have an edge separation of only a few millimetres.
         guard widthMM >= 100, heightMM >= 100 else { return nil }
 
-        let residualsMM =
-            projectedLeft.map { abs($0.x - leftU) * 1000 } +
-            projectedRight.map { abs($0.x - rightU) * 1000 } +
-            projectedTop.map { abs($0.y - topV) * 1000 } +
-            projectedBottom.map { abs($0.y - bottomV) * 1000 }
-
-        let robustResidual = Double(percentile(residualsMM, fraction: 0.68))
+        // Boundary spread is diagnostic uncertainty only. The hard +/-2 mm
+        // production gate remains closed until physical calibration validates it.
+        let residuals =
+            leftBand.map { abs($0 - leftU) * 1000 } +
+            rightBand.map { abs($0 - rightU) * 1000 } +
+            bottomBand.map { abs($0 - bottomV) * 1000 } +
+            topBand.map { abs($0 - topV) * 1000 }
+        let residual = Double(percentile(residuals, fraction: 0.68))
 
         return LiveOpeningMeasurement(
             widthMM: widthMM,
             heightMM: heightMM,
-            fitResidualMM: robustResidual,
+            fitResidualMM: residual,
             pointCount: all.count
         )
     }
@@ -94,9 +104,8 @@ struct Opening3DAccumulator {
     private func localFrame(points: [SIMD3<Float>]) -> LocalFrame? {
         let origin = centroid(points)
 
-        // ARKit world Y is gravity aligned. Estimate the facade/opening normal
-        // only in the horizontal XZ plane. The local horizontal axis is then
-        // perpendicular to that normal and vertical remains gravity.
+        // ARKit Y is gravity aligned. PCA in XZ gives the dominant horizontal
+        // axis of the accumulated physical opening independent of camera pose.
         var xx: Float = 0
         var xz: Float = 0
         var zz: Float = 0
@@ -108,7 +117,6 @@ struct Opening3DAccumulator {
             zz += z * z
         }
 
-        // Principal horizontal direction of the opening point cloud.
         let angle = 0.5 * atan2(2 * xz, xx - zz)
         var horizontal = SIMD3<Float>(cos(angle), 0, sin(angle))
         let length = simd_length(horizontal)

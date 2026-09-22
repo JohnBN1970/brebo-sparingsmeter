@@ -8,6 +8,33 @@ struct PartialEdgeCandidates: Sendable {
     var vertical: [SIMD3<Float>] = []
     var horizontal: [SIMD3<Float>] = []
     var totalCount: Int { vertical.count + horizontal.count }
+
+    /// Conservative first-pass structural filter for the debug build.
+    /// A point must have nearby support along the expected physical edge direction.
+    var structurallySupported: PartialEdgeCandidates {
+        PartialEdgeCandidates(
+            vertical: Self.supported(vertical, alongVertical: true),
+            horizontal: Self.supported(horizontal, alongVertical: false)
+        )
+    }
+
+    private static func supported(_ points: [SIMD3<Float>], alongVertical: Bool) -> [SIMD3<Float>] {
+        guard points.count >= 3 else { return [] }
+        let transverseTolerance: Float = 0.045
+        let minAlong: Float = 0.025
+        let maxAlong: Float = 0.30
+        return points.filter { p in
+            points.contains { q in
+                let dy = abs(q.y - p.y)
+                let dxz = hypot(q.x - p.x, q.z - p.z)
+                if alongVertical {
+                    return dy >= minAlong && dy <= maxAlong && dxz <= transverseTolerance
+                } else {
+                    return dxz >= minAlong && dxz <= maxAlong && dy <= transverseTolerance
+                }
+            }
+        }
+    }
 }
 
 enum DepthSweepSampler {

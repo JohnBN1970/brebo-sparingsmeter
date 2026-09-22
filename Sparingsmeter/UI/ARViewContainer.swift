@@ -22,6 +22,8 @@ struct ARViewContainer: UIViewRepresentable {
         private weak var view: ARView?
         private var observer: NSObjectProtocol?
         private var acceptedObserver: NSObjectProtocol?
+        private var boundaryObserver: NSObjectProtocol?
+        private var boundaryAnchors: [AnchorEntity] = []
         private var anchors: [AnchorEntity] = []
 
         // Debug rendering must stay lightweight. The previous implementation
@@ -51,6 +53,11 @@ struct ARViewContainer: UIViewRepresentable {
                 self?.show(points, accepted: true)
             }
         }
+
+            boundaryObserver = NotificationCenter.default.addObserver(forName: .sparingsmeterBoundaryLines, object: nil, queue: .main) { [weak self] note in
+                guard let lines = note.object as? [DebugBoundaryLine] else { return }
+                self?.showBoundaryLines(lines)
+            }
 
         private func show(_ points: [SIMD3<Float>], accepted: Bool) {
             guard let view, !points.isEmpty else { return }
@@ -90,9 +97,29 @@ struct ARViewContainer: UIViewRepresentable {
             }
         }
 
+        private func showBoundaryLines(_ lines: [DebugBoundaryLine]) {
+            guard let view else { return }
+            for anchor in boundaryAnchors { view.scene.removeAnchor(anchor) }
+            boundaryAnchors.removeAll()
+            let material = SimpleMaterial(color: .systemRed, roughness: 0.2, isMetallic: false)
+            for line in lines {
+                let delta = line.end - line.start
+                let length = simd_length(delta)
+                guard length > 0.001 else { continue }
+                let anchor = AnchorEntity(world: .zero)
+                let entity = ModelEntity(mesh: .generateBox(size: [0.012, length, 0.012]), materials: [material])
+                entity.position = (line.start + line.end) * 0.5
+                entity.orientation = simd_quatf(from: SIMD3<Float>(0, 1, 0), to: simd_normalize(delta))
+                anchor.addChild(entity)
+                view.scene.addAnchor(anchor)
+                boundaryAnchors.append(anchor)
+            }
+        }
+
         deinit {
             if let observer { NotificationCenter.default.removeObserver(observer) }
             if let acceptedObserver { NotificationCenter.default.removeObserver(acceptedObserver) }
+            if let boundaryObserver { NotificationCenter.default.removeObserver(boundaryObserver) }
         }
     }
 }

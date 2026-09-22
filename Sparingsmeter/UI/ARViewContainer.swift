@@ -21,6 +21,7 @@ struct ARViewContainer: UIViewRepresentable {
     final class Coordinator {
         private weak var view: ARView?
         private var observer: NSObjectProtocol?
+        private var acceptedObserver: NSObjectProtocol?
         private var anchors: [AnchorEntity] = []
         private let maximumVisibleBatches = 18
 
@@ -30,15 +31,21 @@ struct ARViewContainer: UIViewRepresentable {
                 forName: .sparingsmeterDebugPoints, object: nil, queue: .main
             ) { [weak self] note in
                 guard let points = note.object as? [SIMD3<Float>] else { return }
-                self?.show(points)
+                self?.show(points, accepted: false)
+            }
+            acceptedObserver = NotificationCenter.default.addObserver(
+                forName: .sparingsmeterAcceptedDebugPoints, object: nil, queue: .main
+            ) { [weak self] note in
+                guard let points = note.object as? [SIMD3<Float>] else { return }
+                self?.show(points, accepted: true)
             }
         }
 
-        private func show(_ points: [SIMD3<Float>]) {
+        private func show(_ points: [SIMD3<Float>], accepted: Bool) {
             guard let view, !points.isEmpty else { return }
             let anchor = AnchorEntity(world: .zero)
-            let mesh = MeshResource.generateSphere(radius: 0.006)
-            let material = SimpleMaterial(color: .systemYellow, roughness: 0.25, isMetallic: false)
+            let mesh = MeshResource.generateSphere(radius: accepted ? 0.009 : 0.005)
+            let material = SimpleMaterial(color: accepted ? .systemGreen : .systemYellow, roughness: 0.25, isMetallic: false)
 
             for point in points {
                 let dot = ModelEntity(mesh: mesh, materials: [material])
@@ -56,6 +63,7 @@ struct ARViewContainer: UIViewRepresentable {
 
         deinit {
             if let observer { NotificationCenter.default.removeObserver(observer) }
+            if let acceptedObserver { NotificationCenter.default.removeObserver(acceptedObserver) }
         }
     }
 }

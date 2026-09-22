@@ -54,21 +54,24 @@ struct ScanView: View {
                     .font(.caption)
             }
 
-            if let width = scanner.liveWidthMM,
-               let height = scanner.liveHeightMM {
-                Divider()
-                Text("Live sparingsmaat")
-                    .font(.caption)
-                Text(String(format: "%.0f x %.0f mm", width, height))
-                    .font(.title2.bold())
+            Divider()
+            HStack {
+                Label(
+                    scanner.positionLocked ? "Positie vast" : scanner.positionState,
+                    systemImage: scanner.positionLocked ? "scope" : "location.viewfinder"
+                )
+                Spacer()
+                Text("\(Int(scanner.positionLockProgress * 100))%")
+                    .monospacedDigit()
+            }
+            .font(scanner.positionLocked ? .headline : .callout)
 
-                if let uncertainty = scanner.estimatedUncertaintyMM {
-                    Text(String(format: "berekende onzekerheid +/- %.1f mm", uncertainty))
-                        .font(.caption)
-                } else {
-                    Text("voorlopige deelscan - nog niet vrijgegeven als productiemaat")
-                        .font(.caption)
-                }
+            if scanner.positionLocked {
+                Text("De 3D-positie van de sparing is vergrendeld. Maatvoering is bewust nog uitgeschakeld.")
+                    .font(.caption)
+            } else {
+                Text("Eerst de fysieke sparing stabiel in wereldruimte vastzetten; nog geen breedte/hoogte berekenen.")
+                    .font(.caption)
             }
 
             switch scanner.quality {

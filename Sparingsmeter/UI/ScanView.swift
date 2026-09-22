@@ -4,6 +4,7 @@ struct ScanView: View {
     @StateObject private var scanner = ARScanController()
     @StateObject private var calibration = CalibrationStore()
     @State private var showCalibration = false
+    @State private var showStopConfirmation = false
 
     var body: some View {
         ZStack {
@@ -25,6 +26,18 @@ struct ScanView: View {
                 store: calibration,
                 liveMeasuredMM: scanner.liveWidthMM
             )
+        }
+        .confirmationDialog(
+            "Scan stoppen?",
+            isPresented: $showStopConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Stop scan", role: .destructive) {
+                scanner.stop()
+            }
+            Button("Doorgaan", role: .cancel) {}
+        } message: {
+            Text("De scan blijft doorlopen totdat je stoppen bevestigt.")
         }
     }
 
@@ -136,7 +149,11 @@ struct ScanView: View {
     private var controls: some View {
         HStack {
             Button(scanner.isRunning ? "Stop scan" : "Start scan") {
-                scanner.isRunning ? scanner.stop() : scanner.start()
+                if scanner.isRunning {
+                    showStopConfirmation = true
+                } else {
+                    scanner.start()
+                }
             }
             .buttonStyle(.borderedProminent)
 

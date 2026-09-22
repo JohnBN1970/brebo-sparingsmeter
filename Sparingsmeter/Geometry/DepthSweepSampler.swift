@@ -138,6 +138,12 @@ struct PartialOpeningMeasurement: Sendable, Equatable {
     let verticalPointCount: Int
     let horizontalPointCount: Int
     let confidence: Double
+    let boundaryLines: [DebugBoundaryLine]
+}
+
+struct DebugBoundaryLine: Sendable, Equatable {
+    let start: SIMD3<Float>
+    let end: SIMD3<Float>
 }
 
 /// Fuses local LiDAR depth discontinuities in ARKit world space.
@@ -198,12 +204,27 @@ struct PartialOpeningAccumulator {
         )
         let confidence = min(1.0, Double(weakestSupport) / 120.0)
 
+        let lowU = min(verticalPair.0.centre, verticalPair.1.centre)
+        let highU = max(verticalPair.0.centre, verticalPair.1.centre)
+        let lowY = min(horizontalPair.0.centre, horizontalPair.1.centre)
+        let highY = max(horizontalPair.0.centre, horizontalPair.1.centre)
+        func world(_ u: Float, _ y: Float) -> SIMD3<Float> {
+            origin + horizontalAxis * u + SIMD3<Float>(0, y - origin.y, 0)
+        }
+        let lines = [
+            DebugBoundaryLine(start: world(lowU, lowY), end: world(lowU, highY)),
+            DebugBoundaryLine(start: world(highU, lowY), end: world(highU, highY)),
+            DebugBoundaryLine(start: world(lowU, lowY), end: world(highU, lowY)),
+            DebugBoundaryLine(start: world(lowU, highY), end: world(highU, highY))
+        ]
+
         return PartialOpeningMeasurement(
             widthMM: widthMM,
             heightMM: heightMM,
             verticalPointCount: vertical.count,
             horizontalPointCount: horizontal.count,
-            confidence: confidence
+            confidence: confidence,
+            boundaryLines: lines
         )
     }
 

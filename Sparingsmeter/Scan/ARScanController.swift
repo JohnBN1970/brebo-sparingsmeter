@@ -104,7 +104,8 @@ final class ARScanController: NSObject, ObservableObject {
 
     private func ingestPartial3D(frame: ARFrame) {
         guard let candidates = DepthSweepSampler.sampleWorldEdgeCandidates(frame: frame) else { return }
-        partialOpening.add(candidates)
+        let accepted = candidates.structurallySupported
+        partialOpening.add(accepted)
         partialVerticalPointCount = partialOpening.vertical.count
         partialHorizontalPointCount = partialOpening.horizontal.count
 
@@ -117,6 +118,15 @@ final class ARScanController: NSObject, ObservableObject {
                 index.isMultiple(of: step) ? point : nil
             }.prefix(160))
             NotificationCenter.default.post(name: .sparingsmeterDebugPoints, object: visible)
+        }
+
+        let acceptedCombined = accepted.vertical + accepted.horizontal
+        if !acceptedCombined.isEmpty {
+            let step = max(1, acceptedCombined.count / 100)
+            let visible = Array(acceptedCombined.enumerated().compactMap { index, point in
+                index.isMultiple(of: step) ? point : nil
+            }.prefix(120))
+            NotificationCenter.default.post(name: .sparingsmeterAcceptedDebugPoints, object: visible)
         }
 
         guard let measurement = partialOpening.measurement else {
@@ -148,6 +158,7 @@ final class ARScanController: NSObject, ObservableObject {
 
 extension Notification.Name {
     static let sparingsmeterDebugPoints = Notification.Name("nl.brebo.sparingsmeter.debugPoints")
+    static let sparingsmeterAcceptedDebugPoints = Notification.Name("nl.brebo.sparingsmeter.acceptedDebugPoints")
 }
 
 extension ARScanController: ARSessionDelegate {

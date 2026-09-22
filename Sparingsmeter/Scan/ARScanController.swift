@@ -61,7 +61,7 @@ final class ARScanController: NSObject, ObservableObject {
         live3DPointCount = 0; depthFrameCount = 0; accepted3DFrameCount = 0
         lastEdgePointCounts = (0,0,0,0); partialVerticalPointCount = 0; partialHorizontalPointCount = 0
         pipelineState = "Deelscan actief - gele punten = opgenomen LiDAR-randen"
-        sessionEvent = "AR-sessie gestart"
+        sessionEvent = "Actief - geen stop geregistreerd"
         userRequestedStop = false
         lastFrameWallClock = Date()
         startWatchdog()
@@ -180,6 +180,7 @@ final class ARScanController: NSObject, ObservableObject {
             if latestTrackedOpening == nil { pipelineState = "Deelscan: lokale 3D-randen verzamelen" }
             return
         }
+        NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: measurement.boundaryLines)
         if opening3D.measurement == nil {
             liveWidthMM = measurement.widthMM; liveHeightMM = measurement.heightMM
             live3DPointCount = measurement.verticalPointCount + measurement.horizontalPointCount
@@ -206,6 +207,7 @@ final class ARScanController: NSObject, ObservableObject {
 extension Notification.Name {
     static let sparingsmeterDebugPoints = Notification.Name("nl.brebo.sparingsmeter.debugPoints")
     static let sparingsmeterAcceptedDebugPoints = Notification.Name("nl.brebo.sparingsmeter.acceptedDebugPoints")
+    static let sparingsmeterBoundaryLines = Notification.Name("nl.brebo.sparingsmeter.boundaryLines")
 }
 
 extension ARScanController: ARSessionDelegate {

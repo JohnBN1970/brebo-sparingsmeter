@@ -36,6 +36,8 @@ final class ARScanController: NSObject, ObservableObject {
     private var acceptedDepthFrameCount = 0
     private var latestTrackedOpening: TrackedOpening?
     private var userRequestedStop = false
+    private var lastFrameWallClock = Date()
+    private var watchdogTask: Task<Void, Never>?
 
     override init() { super.init(); session.delegate = self }
 
@@ -61,15 +63,48 @@ final class ARScanController: NSObject, ObservableObject {
         pipelineState = "Deelscan actief - gele punten = opgenomen LiDAR-randen"
         sessionEvent = "AR-sessie gestart"
         userRequestedStop = false
+        lastFrameWallClock = Date()
+        startWatchdog()
         isRunning = true
     }
 
     func stop() {
         userRequestedStop = true
+        watchdogTask?.cancel()
+        watchdogTask = nil
         session.pause()
         isRunning = false
         pipelineState = "Scan gestopt door gebruiker"
         sessionEvent = "Handmatig gestopt"
+    }
+
+    private func startWatchdog() {
+        watchdogTask?.cancel()
+        watchdogTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(750))
+                guard let self else { return }
+                guard self.isRunning, !self.userRequestedStop else { continue }
+
+                let silentFor = Date().timeIntervalSince(self.lastFrameWallClock)
+                if silentFor > 2.0 {
+                    self.sessionEvent = String(format: "Frame-stilstand %.1fs - sessie herstart", silentFor)
+                    self.pipelineState = "AR-frame stilgevallen - automatisch hervatten"
+
+                    let configuration = ARWorldTrackingConfiguration()
+                    configuration.worldAlignment = .gravity
+                    configuration.environmentTexturing = .none
+                    if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+                        configuration.frameSemantics.insert(.sceneDepth)
+                    }
+                    if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+                        configuration.sceneReconstruction = .mesh
+                    }
+                    self.session.run(configuration, options: [])
+                    self.lastFrameWallClock = Date()
+                }
+            }
+        }
     }
     func arSession() -> ARSession { session }
 
@@ -233,6 +268,7 @@ extension ARScanController: ARSessionDelegate {
         let timestamp = frame.timestamp
         Task { @MainActor [weak self] in
             guard let self else { return }
+            self.lastFrameWallClock = Date()
             self.frameCount += 1
             if depthData != nil { self.acceptedDepthFrameCount += 1; self.depthFrameCount = self.acceptedDepthFrameCount }
             self.ingestPartial3D(frame: frame); self.ingestVisionGuided3D(frame: frame)

@@ -26,12 +26,16 @@ final class ARScanController: NSObject, ObservableObject {
     @Published private(set) var sessionEvent = "Geen sessiegebeurtenis"
     @Published private(set) var interruptionCount = 0
     @Published private(set) var failureCount = 0
+    @Published private(set) var positionLockProgress: Double = 0
+    @Published private(set) var positionLocked = false
+    @Published private(set) var positionState = "Positie nog niet bepaald"
 
     private let session = ARSession()
     private let openingDetector = VisionOpeningDetector()
     private var openingTracker = MultiFrameOpeningTracker()
     private var opening3D = Opening3DAccumulator()
     private var partialOpening = PartialOpeningAccumulator()
+    private var positionTracker = OpeningPositionTracker()
     private var frameCount = 0
     private var acceptedDepthFrameCount = 0
     private var latestTrackedOpening: TrackedOpening?
@@ -55,12 +59,15 @@ final class ARScanController: NSObject, ObservableObject {
         session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
 
         frameCount = 0; acceptedDepthFrameCount = 0; coverage = 0; estimatedUncertaintyMM = nil
-        geometry = OpeningGeometry(); openingTracker.reset(); opening3D.reset(); partialOpening.reset()
+        geometry = OpeningGeometry(); openingTracker.reset(); opening3D.reset(); partialOpening.reset(); positionTracker.reset()
         latestTrackedOpening = nil; openingDetected = false; openingDetectionConfidence = 0
         openingTrackingStability = 0; openingObservationCount = 0; liveWidthMM = nil; liveHeightMM = nil
         live3DPointCount = 0; depthFrameCount = 0; accepted3DFrameCount = 0
         lastEdgePointCounts = (0,0,0,0); partialVerticalPointCount = 0; partialHorizontalPointCount = 0
-        pipelineState = "Deelscan actief - gele punten = opgenomen LiDAR-randen"
+        pipelineState = "Positie zoeken - maatvoering uitgeschakeld"
+        positionLockProgress = 0
+        positionLocked = false
+        positionState = "Zoek vaste positie van de sparing"
         sessionEvent = "Actief - geen stop geregistreerd"
         userRequestedStop = false
         lastFrameWallClock = Date()
@@ -177,14 +184,28 @@ final class ARScanController: NSObject, ObservableObject {
         }
 
         guard let measurement = partialOpening.measurement else {
-            if latestTrackedOpening == nil { pipelineState = "Deelscan: lokale 3D-randen verzamelen" }
+            if latestTrackedOpening == nil { pipelineState = "Positie zoeken - 3D-randen verzamelen" }
             return
         }
-        NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: measurement.boundaryLines)
-        if opening3D.measurement == nil {
-            liveWidthMM = measurement.widthMM; liveHeightMM = measurement.heightMM
-            live3DPointCount = measurement.verticalPointCount + measurement.horizontalPointCount
-            pipelineState = "Deelscan 3D actief"
+
+        let lock = positionTracker.add(lines: measurement.boundaryLines)
+        positionLockProgress = lock.progress
+        positionLocked = lock.isLocked
+        live3DPointCount = measurement.verticalPointCount + measurement.horizontalPointCount
+
+        // Position first: dimensions stay hidden until the physical opening
+        // frame itself is stable in ARKit world space.
+        liveWidthMM = nil
+        liveHeightMM = nil
+        estimatedUncertaintyMM = nil
+
+        if lock.isLocked, let estimate = lock.estimate {
+            positionState = "Positie vast in 3D"
+            pipelineState = "Positie vergrendeld - maatvoering nog uit"
+            NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: estimate.lines)
+        } else {
+            positionState = "Positie stabiliseren \(Int(lock.progress * 100))%"
+            pipelineState = "Positie zoeken - blijf langs dezelfde sparing bewegen"
         }
     }
 
@@ -197,10 +218,10 @@ final class ARScanController: NSObject, ObservableObject {
               clouds.top.count >= minimumPerEdge, clouds.bottom.count >= minimumPerEdge else { return }
         opening3D.add(clouds); accepted3DFrameCount += 1
         live3DPointCount = opening3D.measurement?.pointCount ?? live3DPointCount
-        guard let measurement = opening3D.measurement else { return }
-        liveWidthMM = measurement.widthMM; liveHeightMM = measurement.heightMM
-        pipelineState = "Volledige 3D-meting actief"
-        estimatedUncertaintyMM = max(2.5, measurement.fitResidualMM)
+        guard opening3D.measurement != nil else { return }
+        if !positionLocked {
+            pipelineState = "Positie zoeken - Vision en LiDAR combineren"
+        }
     }
 }
 

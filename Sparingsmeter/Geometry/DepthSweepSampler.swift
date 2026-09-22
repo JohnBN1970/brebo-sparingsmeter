@@ -14,7 +14,8 @@ enum DepthSweepSampler {
     static func sampleWorldEdgeCandidates(
         frame: ARFrame,
         stridePixels: Int = 8,
-        minimumDepthJumpMetres: Float = 0.025
+        minimumDepthJumpMetres: Float = 0.025,
+        centreCropFraction: Float = 0.72
     ) -> PartialEdgeCandidates? {
         guard let depth = frame.sceneDepth else { return nil }
 
@@ -70,9 +71,16 @@ enum DepthSweepSampler {
 
         var result = PartialEdgeCandidates()
         let step = max(4, stridePixels)
+        let crop = max(0.35, min(1.0, centreCropFraction))
+        let marginX = Int(Float(width) * (1.0 - crop) * 0.5)
+        let marginY = Int(Float(height) * (1.0 - crop) * 0.5)
+        let minX = max(step, marginX)
+        let maxX = min(width - step, width - marginX)
+        let minY = max(step, marginY)
+        let maxY = min(height - step, height - marginY)
 
-        for y in stride(from: step, to: height - step, by: step) {
-            for x in stride(from: step, to: width - step, by: step) {
+        for y in stride(from: minY, to: maxY, by: step) {
+            for x in stride(from: minX, to: maxX, by: step) {
                 guard
                     let centre = validDepth(x, y),
                     let left = validDepth(x - step, y),

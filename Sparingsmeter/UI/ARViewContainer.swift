@@ -52,12 +52,13 @@ struct ARViewContainer: UIViewRepresentable {
                 guard let points = note.object as? [SIMD3<Float>] else { return }
                 self?.show(points, accepted: true)
             }
-        }
-
-            boundaryObserver = NotificationCenter.default.addObserver(forName: .sparingsmeterBoundaryLines, object: nil, queue: .main) { [weak self] note in
+            boundaryObserver = NotificationCenter.default.addObserver(
+                forName: .sparingsmeterBoundaryLines, object: nil, queue: .main
+            ) { [weak self] note in
                 guard let lines = note.object as? [DebugBoundaryLine] else { return }
                 self?.showBoundaryLines(lines)
             }
+        }
 
         private func show(_ points: [SIMD3<Float>], accepted: Bool) {
             guard let view, !points.isEmpty else { return }

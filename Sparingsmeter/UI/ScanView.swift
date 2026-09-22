@@ -114,6 +114,11 @@ struct ScanView: View {
                 "Deelscan verticaal \(scanner.partialVerticalPointCount) | horizontaal \(scanner.partialHorizontalPointCount)"
             )
             .font(.caption2.monospaced())
+
+            Text(
+                "\(scanner.sessionEvent) | onderbrekingen \(scanner.interruptionCount) | fouten \(scanner.failureCount)"
+            )
+            .font(.caption2.monospaced())
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)

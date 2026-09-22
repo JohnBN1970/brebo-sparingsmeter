@@ -180,8 +180,18 @@ struct PartialOpeningAccumulator {
         let origin = centroid(all)
         guard let horizontalAxis = dominantHorizontalAxis(points: all, origin: origin) else { return nil }
 
-        let verticalCoordinates = vertical.map { simd_dot($0 - origin, horizontalAxis) }
-        let horizontalCoordinates = horizontal.map { $0.y }
+        // A real opening must live in one narrow physical depth plane. Reject
+        // floor/background/interior edges before fitting the four boundaries.
+        let planeNormal = simd_normalize(simd_cross(horizontalAxis, SIMD3<Float>(0, 1, 0)))
+        let allDepths = all.map { simd_dot($0 - origin, planeNormal) }
+        guard let facadeDepth = dominantDepthBand(allDepths) else { return nil }
+        let planeTolerance: Float = 0.075
+        let planeVertical = vertical.filter { abs(simd_dot($0 - origin, planeNormal) - facadeDepth) <= planeTolerance }
+        let planeHorizontal = horizontal.filter { abs(simd_dot($0 - origin, planeNormal) - facadeDepth) <= planeTolerance }
+        guard planeVertical.count >= 80, planeHorizontal.count >= 80 else { return nil }
+
+        let verticalCoordinates = planeVertical.map { simd_dot($0 - origin, horizontalAxis) }
+        let horizontalCoordinates = planeHorizontal.map { $0.y }
 
         let verticalBands = persistentBands(verticalCoordinates)
         let horizontalBands = persistentBands(horizontalCoordinates)
@@ -231,6 +241,19 @@ struct PartialOpeningAccumulator {
     private struct Band {
         var centre: Float
         var count: Int
+    }
+
+    private func dominantDepthBand(_ depths: [Float]) -> Float? {
+        guard !depths.isEmpty else { return nil }
+        let binWidth: Float = 0.05
+        var bins: [Int: (sum: Float, count: Int)] = [:]
+        for depth in depths {
+            let key = Int((depth / binWidth).rounded())
+            let old = bins[key] ?? (0, 0)
+            bins[key] = (old.sum + depth, old.count + 1)
+        }
+        guard let best = bins.values.max(by: { $0.count < $1.count }), best.count >= 40 else { return nil }
+        return best.sum / Float(best.count)
     }
 
     private func persistentBands(_ coordinates: [Float]) -> [Band] {

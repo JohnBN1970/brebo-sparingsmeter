@@ -23,6 +23,9 @@ final class ARScanController: NSObject, ObservableObject {
     @Published private(set) var partialVerticalPointCount = 0
     @Published private(set) var partialHorizontalPointCount = 0
     @Published private(set) var pipelineState = "Wacht op scan"
+    @Published private(set) var sessionEvent = "Geen sessiegebeurtenis"
+    @Published private(set) var interruptionCount = 0
+    @Published private(set) var failureCount = 0
 
     private let session = ARSession()
     private let openingDetector = VisionOpeningDetector()
@@ -32,6 +35,7 @@ final class ARScanController: NSObject, ObservableObject {
     private var frameCount = 0
     private var acceptedDepthFrameCount = 0
     private var latestTrackedOpening: TrackedOpening?
+    private var userRequestedStop = false
 
     override init() { super.init(); session.delegate = self }
 
@@ -55,10 +59,18 @@ final class ARScanController: NSObject, ObservableObject {
         live3DPointCount = 0; depthFrameCount = 0; accepted3DFrameCount = 0
         lastEdgePointCounts = (0,0,0,0); partialVerticalPointCount = 0; partialHorizontalPointCount = 0
         pipelineState = "Deelscan actief - gele punten = opgenomen LiDAR-randen"
+        sessionEvent = "AR-sessie gestart"
+        userRequestedStop = false
         isRunning = true
     }
 
-    func stop() { session.pause(); isRunning = false; pipelineState = "Scan gestopt" }
+    func stop() {
+        userRequestedStop = true
+        session.pause()
+        isRunning = false
+        pipelineState = "Scan gestopt door gebruiker"
+        sessionEvent = "Handmatig gestopt"
+    }
     func arSession() -> ARSession { session }
 
     func injectFittedGeometryForDevelopment(
@@ -162,6 +174,59 @@ extension Notification.Name {
 }
 
 extension ARScanController: ARSessionDelegate {
+    nonisolated func sessionWasInterrupted(_ session: ARSession) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.interruptionCount += 1
+            self.sessionEvent = "AR-sessie onderbroken"
+            if !self.userRequestedStop {
+                self.isRunning = true
+                self.pipelineState = "Tijdelijk onderbroken - scan blijft actief"
+            }
+        }
+    }
+
+    nonisolated func sessionInterruptionEnded(_ session: ARSession) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard !self.userRequestedStop else { return }
+            self.sessionEvent = "Onderbreking voorbij - sessie hervat"
+            self.isRunning = true
+            let configuration = ARWorldTrackingConfiguration()
+            configuration.worldAlignment = .gravity
+            configuration.environmentTexturing = .none
+            if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+                configuration.frameSemantics.insert(.sceneDepth)
+            }
+            if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+                configuration.sceneReconstruction = .mesh
+            }
+            session.run(configuration, options: [])
+            self.pipelineState = "Scan hervat"
+        }
+    }
+
+    nonisolated func session(_ session: ARSession, didFailWithError error: Error) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.failureCount += 1
+            self.sessionEvent = "AR-fout: \(error.localizedDescription)"
+            guard !self.userRequestedStop else { return }
+            self.isRunning = true
+            self.pipelineState = "AR-fout - automatisch opnieuw starten"
+            let configuration = ARWorldTrackingConfiguration()
+            configuration.worldAlignment = .gravity
+            configuration.environmentTexturing = .none
+            if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+                configuration.frameSemantics.insert(.sceneDepth)
+            }
+            if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+                configuration.sceneReconstruction = .mesh
+            }
+            session.run(configuration, options: [])
+        }
+    }
+
     nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let depthData = frame.sceneDepth
         let capturedImage = frame.capturedImage

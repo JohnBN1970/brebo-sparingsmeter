@@ -29,6 +29,7 @@ final class ARScanController: NSObject, ObservableObject {
     @Published private(set) var positionLockProgress: Double = 0
     @Published private(set) var positionLocked = false
     @Published private(set) var positionState = "Positie nog niet bepaald"
+    @Published private(set) var positionSideLocks = OpeningSideLocks(left: false, right: false, top: false, bottom: false)
 
     private let session = ARSession()
     private let openingDetector = VisionOpeningDetector()
@@ -69,6 +70,7 @@ final class ARScanController: NSObject, ObservableObject {
         positionLockProgress = 0
         positionLocked = false
         positionState = "Zoek vaste positie van de sparing"
+        positionSideLocks = OpeningSideLocks(left: false, right: false, top: false, bottom: false)
         sessionEvent = "Actief - geen stop geregistreerd"
         userRequestedStop = false
         lastFrameWallClock = Date()
@@ -193,6 +195,7 @@ final class ARScanController: NSObject, ObservableObject {
         let lock = positionTracker.add(lines: measurement.boundaryLines)
         positionLockProgress = lock.progress
         positionLocked = lock.isLocked
+        positionSideLocks = lock.sides
         live3DPointCount = measurement.verticalPointCount + measurement.horizontalPointCount
 
         // Position first: dimensions stay hidden until the physical opening

@@ -54,6 +54,7 @@ final class ARScanController: NSObject, ObservableObject {
         let configuration = ARWorldTrackingConfiguration()
         configuration.worldAlignment = .gravity
         configuration.environmentTexturing = .none
+        configuration.planeDetection = [.vertical]
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) { configuration.frameSemantics.insert(.sceneDepth) }
         if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) { configuration.sceneReconstruction = .mesh }
         session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
@@ -101,6 +102,7 @@ final class ARScanController: NSObject, ObservableObject {
                     let configuration = ARWorldTrackingConfiguration()
                     configuration.worldAlignment = .gravity
                     configuration.environmentTexturing = .none
+        configuration.planeDetection = [.vertical]
                     if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
                         configuration.frameSemantics.insert(.sceneDepth)
                     }
@@ -253,6 +255,7 @@ extension ARScanController: ARSessionDelegate {
             let configuration = ARWorldTrackingConfiguration()
             configuration.worldAlignment = .gravity
             configuration.environmentTexturing = .none
+        configuration.planeDetection = [.vertical]
             if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
                 configuration.frameSemantics.insert(.sceneDepth)
             }
@@ -275,6 +278,7 @@ extension ARScanController: ARSessionDelegate {
             let configuration = ARWorldTrackingConfiguration()
             configuration.worldAlignment = .gravity
             configuration.environmentTexturing = .none
+        configuration.planeDetection = [.vertical]
             if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
                 configuration.frameSemantics.insert(.sceneDepth)
             }

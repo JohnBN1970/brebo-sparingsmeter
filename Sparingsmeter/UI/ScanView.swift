@@ -66,6 +66,16 @@ struct ScanView: View {
             }
             .font(scanner.positionLocked ? .headline : .callout)
 
+            HStack(spacing: 14) {
+                Text("L \(scanner.positionSideLocks.left ? "✓" : "·")")
+                Text("R \(scanner.positionSideLocks.right ? "✓" : "·")")
+                Text("B \(scanner.positionSideLocks.top ? "✓" : "·")")
+                Text("O \(scanner.positionSideLocks.bottom ? "✓" : "·")")
+                Spacer()
+                Text("\(scanner.positionSideLocks.count)/4 zijden")
+            }
+            .font(.caption.monospaced())
+
             if scanner.positionLocked {
                 Text("De 3D-positie van de sparing is vergrendeld. Maatvoering is bewust nog uitgeschakeld.")
                     .font(.caption)

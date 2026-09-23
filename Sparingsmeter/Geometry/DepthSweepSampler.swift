@@ -96,6 +96,34 @@ enum DepthSweepSampler {
             )
         }
 
+        // Position first: if ARKit has a vertical wall/opening plane, use it as
+        // the physical reference before any edge point may enter the accumulator.
+        // This removes floor, ceiling and background edges at the source.
+        let verticalPlanes = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
+            .filter { $0.alignment == .vertical }
+
+        let referencePlane: (point: SIMD3<Float>, normal: SIMD3<Float>)? = verticalPlanes
+            .sorted {
+                ($0.extent.x * $0.extent.z) > ($1.extent.x * $1.extent.z)
+            }
+            .first
+            .map { anchor in
+                let localCenter = SIMD4<Float>(anchor.center.x, anchor.center.y, anchor.center.z, 1)
+                let worldCenter4 = anchor.transform * localCenter
+                let worldCenter = SIMD3<Float>(worldCenter4.x, worldCenter4.y, worldCenter4.z)
+
+                // ARPlaneAnchor's local Y axis is perpendicular to the plane.
+                let normal4 = anchor.transform.columns.1
+                let normal = simd_normalize(SIMD3<Float>(normal4.x, normal4.y, normal4.z))
+                return (worldCenter, normal)
+            }
+
+        func belongsToOpeningPlane(_ point: SIMD3<Float>) -> Bool {
+            guard let referencePlane else { return true }
+            let distance = abs(simd_dot(point - referencePlane.point, referencePlane.normal))
+            return distance <= 0.12
+        }
+
         var result = PartialEdgeCandidates()
         let step = max(4, stridePixels)
         let crop = max(0.35, min(1.0, centreCropFraction))
@@ -120,6 +148,7 @@ enum DepthSweepSampler {
                 let verticalGradient = abs(down - up)
                 guard max(horizontalGradient, verticalGradient) >= minimumDepthJumpMetres else { continue }
                 guard let world = worldPoint(x: x, y: y, depthMetres: centre) else { continue }
+                guard belongsToOpeningPlane(world) else { continue }
 
                 if horizontalGradient > verticalGradient * 1.25 {
                     result.vertical.append(world)

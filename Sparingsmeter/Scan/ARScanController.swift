@@ -30,6 +30,8 @@ final class ARScanController: NSObject, ObservableObject {
     @Published private(set) var positionLocked = false
     @Published private(set) var positionState = "Positie nog niet bepaald"
     @Published private(set) var positionSideLocks = OpeningSideLocks(left: false, right: false, top: false, bottom: false)
+    @Published private(set) var openingValidationScore: Double = 0
+    @Published private(set) var openingValidationState = "Opening nog niet gevalideerd"
 
     private let session = ARSession()
     private let openingDetector = VisionOpeningDetector()
@@ -71,6 +73,8 @@ final class ARScanController: NSObject, ObservableObject {
         positionLocked = false
         positionState = "Zoek vaste positie van de sparing"
         positionSideLocks = OpeningSideLocks(left: false, right: false, top: false, bottom: false)
+        openingValidationScore = 0
+        openingValidationState = "Opening nog niet gevalideerd"
         sessionEvent = "Actief - geen stop geregistreerd"
         userRequestedStop = false
         lastFrameWallClock = Date()
@@ -193,10 +197,22 @@ final class ARScanController: NSObject, ObservableObject {
         }
 
         let lock = positionTracker.add(lines: measurement.boundaryLines)
-        positionLockProgress = lock.progress
-        positionLocked = lock.isLocked
         positionSideLocks = lock.sides
         live3DPointCount = measurement.verticalPointCount + measurement.horizontalPointCount
+
+        let validation = OpeningDepthValidator.validate(
+            frame: frame,
+            lines: measurement.boundaryLines
+        )
+        openingValidationScore = validation.score
+        openingValidationState = validation.isOpening
+            ? "Opening bevestigd door diepte"
+            : "Vier lijnen stabiel, opening nog niet bevestigd"
+
+        // 80% comes from the four independently stable sides; the final 20%
+        // is reserved for proving that those sides actually enclose an opening.
+        positionLockProgress = min(1.0, lock.progress * 0.8 + validation.score * 0.2)
+        positionLocked = lock.isLocked && validation.isOpening
 
         // Position first: dimensions stay hidden until the physical opening
         // frame itself is stable in ARKit world space.
@@ -204,10 +220,14 @@ final class ARScanController: NSObject, ObservableObject {
         liveHeightMM = nil
         estimatedUncertaintyMM = nil
 
-        if lock.isLocked, let estimate = lock.estimate {
-            positionState = "Positie vast in 3D"
+        if positionLocked, let estimate = lock.estimate {
+            positionState = "Positie vast in 3D + opening bevestigd"
             pipelineState = "Positie vergrendeld - maatvoering nog uit"
             NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: estimate.lines)
+        } else if lock.isLocked {
+            positionState = "4/4 lijnen stabiel - opening controleren"
+            pipelineState = "Nog geen lock: diepte binnen rechthoek past niet bij opening"
+            NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: measurement.boundaryLines)
         } else {
             positionState = "Positie stabiliseren \(Int(lock.progress * 100))%"
             pipelineState = "Positie zoeken - blijf langs dezelfde sparing bewegen"

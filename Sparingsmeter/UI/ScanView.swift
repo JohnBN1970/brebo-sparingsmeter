@@ -76,6 +76,14 @@ struct ScanView: View {
             }
             .font(.caption.monospaced())
 
+            HStack {
+                Text(scanner.openingValidationState)
+                Spacer()
+                Text("\(Int(scanner.openingValidationScore * 100))%")
+                    .monospacedDigit()
+            }
+            .font(.caption)
+
             if scanner.positionLocked {
                 Text("De 3D-positie van de sparing is vergrendeld. Maatvoering is bewust nog uitgeschakeld.")
                     .font(.caption)

@@ -226,11 +226,11 @@ struct PartialOpeningAccumulator {
         let horizontalBands = persistentBands(horizontalCoordinates)
         guard verticalBands.count >= 2, horizontalBands.count >= 2 else { return nil }
 
-        // Select the most widely separated persistent pair. Sparse clutter can
-        // no longer become an outer edge merely because it is an extreme point.
+        // Select the strongest plausible opening pair, not simply the widest
+        // pair. The widest pair can span unrelated facade/interior edges.
         guard
-            let verticalPair = widestSupportedPair(verticalBands),
-            let horizontalPair = widestSupportedPair(horizontalBands)
+            let verticalPair = bestSupportedPair(verticalBands, minimumSeparation: 0.25),
+            let horizontalPair = bestSupportedPair(horizontalBands, minimumSeparation: 0.25)
         else { return nil }
 
         let widthMM = Double(abs(verticalPair.1.centre - verticalPair.0.centre)) * 1000.0
@@ -309,16 +309,23 @@ struct PartialOpeningAccumulator {
         }
     }
 
-    private func widestSupportedPair(_ bands: [Band]) -> (Band, Band)? {
+    private func bestSupportedPair(_ bands: [Band], minimumSeparation: Float) -> (Band, Band)? {
         guard bands.count >= 2 else { return nil }
         var best: (Band, Band)?
-        var bestDistance: Float = 0
+        var bestScore: Float = -.greatestFiniteMagnitude
 
         for i in 0..<(bands.count - 1) {
             for j in (i + 1)..<bands.count {
                 let distance = abs(bands[j].centre - bands[i].centre)
-                if distance > bestDistance {
-                    bestDistance = distance
+                guard distance >= minimumSeparation else { continue }
+
+                // Both sides must be repeatedly observed. Distance is useful,
+                // but cannot overpower strong physical edge evidence.
+                let weakest = Float(min(bands[i].count, bands[j].count))
+                let total = Float(bands[i].count + bands[j].count)
+                let score = weakest * 2.0 + total * 0.35 + min(distance, 3.0) * 12.0
+                if score > bestScore {
+                    bestScore = score
                     best = (bands[i], bands[j])
                 }
             }

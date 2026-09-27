@@ -84,6 +84,11 @@ struct ScanView: View {
             }
             .font(.caption)
 
+            if scanner.boundaryRefinementMM > 0 {
+                Text(String(format: "Randcorrectie naar buiten: %.0f mm per zijde", scanner.boundaryRefinementMM))
+                    .font(.caption2.monospaced())
+            }
+
             if scanner.positionLocked {
                 Text("De 3D-positie van de sparing is vergrendeld. Maatvoering is bewust nog uitgeschakeld.")
                     .font(.caption)

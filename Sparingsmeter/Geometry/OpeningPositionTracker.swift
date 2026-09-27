@@ -51,9 +51,11 @@ struct OpeningPositionTracker {
             return OpeningPositionLock(progress: 0, isLocked: false, estimate: history.last, sides: sides)
         }
 
-        func stable(_ values: [Float]) -> Bool {
+        func stable(_ values: [SIMD3<Float>]) -> Bool {
             guard values.count >= minimumLockSamples else { return false }
-            return (values.max()! - values.min()!) <= sideToleranceMetres
+            let mean = values.reduce(SIMD3<Float>(repeating: 0), +) / Float(values.count)
+            let spread = values.map { simd_distance($0, mean) }.max() ?? .greatestFiniteMagnitude
+            return spread <= sideToleranceMetres
         }
 
         let left = stable(canonical.map(\.left))
@@ -76,36 +78,26 @@ struct OpeningPositionTracker {
     }
 
     private struct SidePositions {
-        let left: Float
-        let right: Float
-        let bottom: Float
-        let top: Float
+        let left: SIMD3<Float>
+        let right: SIMD3<Float>
+        let bottom: SIMD3<Float>
+        let top: SIMD3<Float>
     }
 
     private static func sidePositions(_ estimate: OpeningPositionEstimate) -> SidePositions? {
+        // PartialOpeningAccumulator emits a fixed semantic order:
+        // [left, right, bottom, top]. Track those physical line centres directly
+        // in ARKit world space instead of rebuilding a fresh local axis per frame.
         guard estimate.lines.count == 4 else { return nil }
-        let vertical = estimate.lines.filter {
-            abs($0.end.y - $0.start.y) >= hypot($0.end.x - $0.start.x, $0.end.z - $0.start.z)
+        func centre(_ line: DebugBoundaryLine) -> SIMD3<Float> {
+            (line.start + line.end) * 0.5
         }
-        let horizontal = estimate.lines.filter {
-            abs($0.end.y - $0.start.y) < hypot($0.end.x - $0.start.x, $0.end.z - $0.start.z)
-        }
-        guard vertical.count == 2, horizontal.count == 2 else { return nil }
-
-        // Use a stable horizontal world axis derived from the two vertical
-        // boundary centres; gravity supplies the vertical coordinate.
-        let vc = vertical.map { ($0.start + $0.end) * 0.5 }
-        var axis = vc[1] - vc[0]
-        axis.y = 0
-        guard simd_length(axis) > 0.05 else { return nil }
-        axis = simd_normalize(axis)
-        // Canonical sign prevents left/right swapping between frames.
-        if axis.x < 0 || (abs(axis.x) < 0.001 && axis.z < 0) { axis = -axis }
-
-        let origin = estimate.center
-        let u = vc.map { simd_dot($0 - origin, axis) }.sorted()
-        let hy = horizontal.map { (($0.start.y + $0.end.y) * 0.5) }.sorted()
-        return SidePositions(left: u[0], right: u[1], bottom: hy[0], top: hy[1])
+        return SidePositions(
+            left: centre(estimate.lines[0]),
+            right: centre(estimate.lines[1]),
+            bottom: centre(estimate.lines[2]),
+            top: centre(estimate.lines[3])
+        )
     }
 
     private static func estimate(from lines: [DebugBoundaryLine]) -> OpeningPositionEstimate? {

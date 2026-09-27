@@ -32,6 +32,7 @@ final class ARScanController: NSObject, ObservableObject {
     @Published private(set) var positionSideLocks = OpeningSideLocks(left: false, right: false, top: false, bottom: false)
     @Published private(set) var openingValidationScore: Double = 0
     @Published private(set) var openingValidationState = "Opening nog niet gevalideerd"
+    @Published private(set) var boundaryRefinementMM: Double = 0
 
     private let session = ARSession()
     private let openingDetector = VisionOpeningDetector()
@@ -75,6 +76,7 @@ final class ARScanController: NSObject, ObservableObject {
         positionSideLocks = OpeningSideLocks(left: false, right: false, top: false, bottom: false)
         openingValidationScore = 0
         openingValidationState = "Opening nog niet gevalideerd"
+        boundaryRefinementMM = 0
         sessionEvent = "Actief - geen stop geregistreerd"
         userRequestedStop = false
         lastFrameWallClock = Date()
@@ -200,14 +202,39 @@ final class ARScanController: NSObject, ObservableObject {
         positionSideLocks = lock.sides
         live3DPointCount = measurement.verticalPointCount + measurement.horizontalPointCount
 
+        let seedLines = measurement.boundaryLines
+        let seedValidation = OpeningDepthValidator.validate(
+            frame: frame,
+            lines: seedLines
+        )
+
+        let refinement: OpeningBoundaryRefinement
+        if lock.isLocked && !seedValidation.isOpening {
+            refinement = OpeningBoundaryRefiner.refine(frame: frame, seed: seedLines)
+        } else {
+            refinement = OpeningBoundaryRefinement(
+                lines: seedLines,
+                score: seedValidation.score,
+                expansionMetres: 0
+            )
+        }
+
         let validation = OpeningDepthValidator.validate(
             frame: frame,
-            lines: measurement.boundaryLines
+            lines: refinement.lines
         )
         openingValidationScore = validation.score
-        openingValidationState = validation.isOpening
-            ? "Opening bevestigd door diepte"
-            : "Vier lijnen stabiel, opening nog niet bevestigd"
+        boundaryRefinementMM = Double(refinement.expansionMetres * 1000)
+
+        if validation.isOpening {
+            openingValidationState = refinement.expansionMetres > 0
+                ? "Opening bevestigd na randcorrectie"
+                : "Opening bevestigd door diepte"
+        } else if refinement.expansionMetres > 0 {
+            openingValidationState = "Randen naar buiten gecorrigeerd, opening nog niet bevestigd"
+        } else {
+            openingValidationState = "Vier lijnen stabiel, opening nog niet bevestigd"
+        }
 
         // 80% comes from the four independently stable sides; the final 20%
         // is reserved for proving that those sides actually enclose an opening.
@@ -220,14 +247,16 @@ final class ARScanController: NSObject, ObservableObject {
         liveHeightMM = nil
         estimatedUncertaintyMM = nil
 
-        if positionLocked, let estimate = lock.estimate {
+        if positionLocked {
             positionState = "Positie vast in 3D + opening bevestigd"
             pipelineState = "Positie vergrendeld - maatvoering nog uit"
-            NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: estimate.lines)
+            NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: refinement.lines)
         } else if lock.isLocked {
-            positionState = "4/4 lijnen stabiel - opening controleren"
-            pipelineState = "Nog geen lock: diepte binnen rechthoek past niet bij opening"
-            NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: measurement.boundaryLines)
+            positionState = refinement.expansionMetres > 0
+                ? "4/4 stabiel - randen naar buiten zoeken"
+                : "4/4 lijnen stabiel - opening controleren"
+            pipelineState = "Nog geen lock: fysieke sparingsrand verder zoeken"
+            NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: refinement.lines)
         } else {
             positionState = "Positie stabiliseren \(Int(lock.progress * 100))%"
             pipelineState = "Positie zoeken - blijf langs dezelfde sparing bewegen"

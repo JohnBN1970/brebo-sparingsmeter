@@ -15,37 +15,51 @@ enum OpeningBoundaryRefiner {
     static func refine(
         frame: ARFrame,
         seed: [DebugBoundaryLine],
-        maximumExpansionMetres: Float = 0.60,
-        stepMetres: Float = 0.05
+        maximumExpansionMetres: Float = 0.30,
+        stepMetres: Float = 0.01
     ) -> OpeningBoundaryRefinement {
         guard seed.count == 4 else {
             return OpeningBoundaryRefinement(lines: seed, score: 0, expansionMetres: 0)
         }
 
-        var bestLines = seed
-        var bestValidation = OpeningDepthValidator.validate(frame: frame, lines: seed)
-        var bestExpansion: Float = 0
+        var currentLines = seed
+        var currentValidation = OpeningDepthValidator.validate(frame: frame, lines: seed)
+        var totalExpansion: Float = 0
+        var previousScore = currentValidation.score
+        var consecutiveEvidence = 0
 
-        var expansion = stepMetres
-        while expansion <= maximumExpansionMetres + 0.001 {
-            let candidate = expanded(seed, by: expansion)
+        // Walk outward in small increments and stop at the FIRST sustained
+        // depth transition. Do not scan the whole range and pick a distant
+        // maximum: that was the cause of the 550 mm overshoot.
+        while totalExpansion + stepMetres <= maximumExpansionMetres + 0.001 {
+            let candidate = expanded(seed, by: totalExpansion + stepMetres)
             let validation = OpeningDepthValidator.validate(frame: frame, lines: candidate)
+            let gain = validation.score - previousScore
 
-            // Prefer a higher opening score. For equal scores, prefer the
-            // smaller outward move so the rectangle cannot run away.
-            if validation.score > bestValidation.score + 0.04 {
-                bestValidation = validation
-                bestLines = candidate
-                bestExpansion = expansion
+            if gain >= 0.04 || validation.isOpening {
+                consecutiveEvidence += 1
+            } else if gain < -0.06 {
+                break
+            } else {
+                consecutiveEvidence = 0
             }
 
-            expansion += stepMetres
+            currentLines = candidate
+            currentValidation = validation
+            totalExpansion += stepMetres
+            previousScore = validation.score
+
+            // Two adjacent 10 mm steps must agree. This is deliberately
+            // conservative; later this becomes independent L/R/B/O search.
+            if consecutiveEvidence >= 2 || validation.score >= 0.70 {
+                break
+            }
         }
 
         return OpeningBoundaryRefinement(
-            lines: bestLines,
-            score: bestValidation.score,
-            expansionMetres: bestExpansion
+            lines: currentLines,
+            score: currentValidation.score,
+            expansionMetres: totalExpansion
         )
     }
 

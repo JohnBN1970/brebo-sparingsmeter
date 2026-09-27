@@ -62,8 +62,8 @@ enum OpeningBoundaryRefiner {
         guard simd_length(horizontal) > 0.05 else { return lines }
         horizontal = simd_normalize(horizontal)
 
-        let lowY = min(bottom.start.y, bottom.end.y, top.start.y, top.end.y)
-        let highY = max(bottom.start.y, bottom.end.y, top.start.y, top.end.y)
+        let lowY = [bottom.start.y, bottom.end.y, top.start.y, top.end.y].min() ?? bottom.start.y
+        let highY = [bottom.start.y, bottom.end.y, top.start.y, top.end.y].max() ?? top.start.y
 
         let newLeftCenter = leftCenter - horizontal * amount
         let newRightCenter = rightCenter + horizontal * amount

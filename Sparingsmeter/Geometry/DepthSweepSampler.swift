@@ -340,10 +340,17 @@ struct PartialOpeningAccumulator {
         }
 
         let angle = 0.5 * atan2(2 * xz, xx - zz)
-        let axis = SIMD3<Float>(cos(angle), 0, sin(angle))
+        var axis = SIMD3<Float>(cos(angle), 0, sin(angle))
         let length = simd_length(axis)
         guard length > 0.001 else { return nil }
-        return axis / length
+        axis /= length
+
+        // PCA has an arbitrary sign. Canonicalise it in world space so the
+        // same physical jamb cannot swap from left to right between frames.
+        if axis.x < 0 || (abs(axis.x) < 0.001 && axis.z < 0) {
+            axis = -axis
+        }
+        return axis
     }
 
     private func centroid(_ points: [SIMD3<Float>]) -> SIMD3<Float> {

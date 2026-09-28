@@ -33,6 +33,7 @@ final class ARScanController: NSObject, ObservableObject {
     @Published private(set) var openingValidationScore: Double = 0
     @Published private(set) var openingValidationState = "Opening nog niet gevalideerd"
     @Published private(set) var boundaryRefinementMM: Double = 0
+    @Published private(set) var boundaryRefinementSidesMM = (left: 0.0, right: 0.0, top: 0.0, bottom: 0.0)
 
     private let session = ARSession()
     private let openingDetector = VisionOpeningDetector()
@@ -77,6 +78,7 @@ final class ARScanController: NSObject, ObservableObject {
         openingValidationScore = 0
         openingValidationState = "Opening nog niet gevalideerd"
         boundaryRefinementMM = 0
+        boundaryRefinementSidesMM = (0, 0, 0, 0)
         sessionEvent = "Actief - geen stop geregistreerd"
         userRequestedStop = false
         lastFrameWallClock = Date()
@@ -215,7 +217,11 @@ final class ARScanController: NSObject, ObservableObject {
             refinement = OpeningBoundaryRefinement(
                 lines: seedLines,
                 score: seedValidation.score,
-                expansionMetres: 0
+                expansionMetres: 0,
+                leftMetres: 0,
+                rightMetres: 0,
+                topMetres: 0,
+                bottomMetres: 0
             )
         }
 
@@ -225,6 +231,12 @@ final class ARScanController: NSObject, ObservableObject {
         )
         openingValidationScore = validation.score
         boundaryRefinementMM = Double(refinement.expansionMetres * 1000)
+        boundaryRefinementSidesMM = (
+            Double(refinement.leftMetres * 1000),
+            Double(refinement.rightMetres * 1000),
+            Double(refinement.topMetres * 1000),
+            Double(refinement.bottomMetres * 1000)
+        )
 
         if validation.isOpening {
             openingValidationState = refinement.expansionMetres > 0

@@ -85,8 +85,16 @@ struct ScanView: View {
             .font(.caption)
 
             if scanner.boundaryRefinementMM > 0 {
-                Text(String(format: "Randcorrectie naar buiten: %.0f mm per zijde", scanner.boundaryRefinementMM))
-                    .font(.caption2.monospaced())
+                Text(
+                    String(
+                        format: "Randcorrectie L %.0f | R %.0f | B %.0f | O %.0f mm",
+                        scanner.boundaryRefinementSidesMM.left,
+                        scanner.boundaryRefinementSidesMM.right,
+                        scanner.boundaryRefinementSidesMM.top,
+                        scanner.boundaryRefinementSidesMM.bottom
+                    )
+                )
+                .font(.caption2.monospaced())
             }
 
             if scanner.positionLocked {

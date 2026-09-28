@@ -6,12 +6,13 @@ struct OpeningBoundaryRefinement: Sendable, Equatable {
     let lines: [DebugBoundaryLine]
     let score: Double
     let expansionMetres: Float
+    let leftMetres: Float
+    let rightMetres: Float
+    let topMetres: Float
+    let bottomMetres: Float
 }
 
 enum OpeningBoundaryRefiner {
-    /// Starting from a stable rectangle, search outward in the same physical
-    /// plane. The first goal is not dimensioning: it is to move an internal
-    /// stable rectangle toward the outer physical opening boundary.
     static func refine(
         frame: ARFrame,
         seed: [DebugBoundaryLine],
@@ -19,91 +20,115 @@ enum OpeningBoundaryRefiner {
         stepMetres: Float = 0.01
     ) -> OpeningBoundaryRefinement {
         guard seed.count == 4 else {
-            return OpeningBoundaryRefinement(lines: seed, score: 0, expansionMetres: 0)
+            return OpeningBoundaryRefinement(
+                lines: seed, score: 0, expansionMetres: 0,
+                leftMetres: 0, rightMetres: 0, topMetres: 0, bottomMetres: 0
+            )
         }
 
+        var distances = SIMD4<Float>(repeating: 0) // L, R, B, T
         var currentLines = seed
-        var currentValidation = OpeningDepthValidator.validate(frame: frame, lines: seed)
-        var totalExpansion: Float = 0
-        var previousScore = currentValidation.score
-        var consecutiveEvidence = 0
+        var currentValidation = OpeningDepthValidator.validate(frame: frame, lines: currentLines)
 
-        // Walk outward in small increments and stop at the FIRST sustained
-        // depth transition. Do not scan the whole range and pick a distant
-        // maximum: that was the cause of the 550 mm overshoot.
-        while totalExpansion + stepMetres <= maximumExpansionMetres + 0.001 {
-            let candidate = expanded(seed, by: totalExpansion + stepMetres)
-            let validation = OpeningDepthValidator.validate(frame: frame, lines: candidate)
-            let gain = validation.score - previousScore
+        // Each physical side now searches independently. A side stops at the
+        // first sustained improvement in enclosed opening depth instead of
+        // dragging all four sides outward together.
+        for side in 0..<4 {
+            var previousScore = currentValidation.score
+            var evidence = 0
 
-            if gain >= 0.04 || validation.isOpening {
-                consecutiveEvidence += 1
-            } else if gain < -0.06 {
-                break
-            } else {
-                consecutiveEvidence = 0
-            }
+            while distances[side] + stepMetres <= maximumExpansionMetres + 0.001 {
+                var trialDistances = distances
+                trialDistances[side] += stepMetres
+                let candidate = adjusted(
+                    seed,
+                    left: trialDistances.x,
+                    right: trialDistances.y,
+                    bottom: trialDistances.z,
+                    top: trialDistances.w
+                )
+                let validation = OpeningDepthValidator.validate(frame: frame, lines: candidate)
+                let gain = validation.score - previousScore
 
-            currentLines = candidate
-            currentValidation = validation
-            totalExpansion += stepMetres
-            previousScore = validation.score
+                if gain >= 0.04 || validation.isOpening {
+                    evidence += 1
+                } else if gain < -0.06 {
+                    break
+                } else {
+                    evidence = 0
+                }
 
-            // Two adjacent 10 mm steps must agree. This is deliberately
-            // conservative; later this becomes independent L/R/B/O search.
-            if consecutiveEvidence >= 2 || validation.score >= 0.70 {
-                break
+                distances = trialDistances
+                currentLines = candidate
+                currentValidation = validation
+                previousScore = validation.score
+
+                // First repeatable transition wins. This prevents a single side
+                // from wandering hundreds of millimetres toward distant clutter.
+                if evidence >= 2 || validation.score >= 0.70 {
+                    break
+                }
             }
         }
 
         return OpeningBoundaryRefinement(
             lines: currentLines,
             score: currentValidation.score,
-            expansionMetres: totalExpansion
+            expansionMetres: max(distances.x, distances.y, distances.z, distances.w),
+            leftMetres: distances.x,
+            rightMetres: distances.y,
+            topMetres: distances.w,
+            bottomMetres: distances.z
         )
     }
 
-    private static func expanded(_ lines: [DebugBoundaryLine], by amount: Float) -> [DebugBoundaryLine] {
-        let left = lines[0]
-        let right = lines[1]
-        let bottom = lines[2]
-        let top = lines[3]
+    private static func adjusted(
+        _ lines: [DebugBoundaryLine],
+        left: Float,
+        right: Float,
+        bottom: Float,
+        top: Float
+    ) -> [DebugBoundaryLine] {
+        let leftLine = lines[0]
+        let rightLine = lines[1]
+        let bottomLine = lines[2]
+        let topLine = lines[3]
 
-        let leftCenter = (left.start + left.end) * 0.5
-        let rightCenter = (right.start + right.end) * 0.5
+        let leftCenter = (leftLine.start + leftLine.end) * 0.5
+        let rightCenter = (rightLine.start + rightLine.end) * 0.5
+
         var horizontal = rightCenter - leftCenter
         horizontal.y = 0
         guard simd_length(horizontal) > 0.05 else { return lines }
         horizontal = simd_normalize(horizontal)
 
-        let lowY = [bottom.start.y, bottom.end.y, top.start.y, top.end.y].min() ?? bottom.start.y
-        let highY = [bottom.start.y, bottom.end.y, top.start.y, top.end.y].max() ?? top.start.y
+        let lowY = [bottomLine.start.y, bottomLine.end.y].reduce(0, +) * 0.5 - bottom
+        let highY = [topLine.start.y, topLine.end.y].reduce(0, +) * 0.5 + top
 
-        let newLeftCenter = leftCenter - horizontal * amount
-        let newRightCenter = rightCenter + horizontal * amount
-        let newLowY = lowY - amount
-        let newHighY = highY + amount
+        let newLeftCenter = leftCenter - horizontal * left
+        let newRightCenter = rightCenter + horizontal * right
 
         func point(_ center: SIMD3<Float>, y: Float) -> SIMD3<Float> {
             SIMD3<Float>(center.x, y, center.z)
         }
 
-        let newLeft = DebugBoundaryLine(
-            start: point(newLeftCenter, y: newLowY),
-            end: point(newLeftCenter, y: newHighY)
-        )
-        let newRight = DebugBoundaryLine(
-            start: point(newRightCenter, y: newLowY),
-            end: point(newRightCenter, y: newHighY)
-        )
-        let newBottom = DebugBoundaryLine(
-            start: point(newLeftCenter, y: newLowY),
-            end: point(newRightCenter, y: newLowY)
-        )
-        let newTop = DebugBoundaryLine(
-            start: point(newLeftCenter, y: newHighY),
-            end: point(newRightCenter, y: newHighY)
-        )
-        return [newLeft, newRight, newBottom, newTop]
+        return [
+            DebugBoundaryLine(
+                start: point(newLeftCenter, y: lowY),
+                end: point(newLeftCenter, y: highY)
+            ),
+            DebugBoundaryLine(
+                start: point(newRightCenter, y: lowY),
+                end: point(newRightCenter, y: highY)
+            ),
+            DebugBoundaryLine(
+                start: point(newLeftCenter, y: lowY),
+                end: point(newRightCenter, y: lowY)
+            ),
+            DebugBoundaryLine(
+                start: point(newLeftCenter, y: highY),
+                end: point(newRightCenter, y: highY)
+            )
+        ]
     }
 }

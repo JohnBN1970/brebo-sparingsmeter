@@ -42,68 +42,57 @@ enum OpeningBoundaryRefiner {
         var currentLines = seed
         var currentValidation = OpeningDepthValidator.validate(frame: frame, lines: currentLines)
 
-        // Each side searches independently. A side is allowed to move the
-        // rectangle only when a repeatable physical transition was actually
-        // found. Reaching the 300 mm search limit is a failure, not a distance.
+        // Search every side independently for the strongest local LiDAR
+        // depth transition. We no longer infer a physical edge from the global
+        // opening-depth score; that score can be 100% while the edge is wrong.
         for side in 0..<4 {
-            let baseDistance = distances[side]
-            let baseLines = currentLines
-            let baseValidation = currentValidation
+            var bestDistance: Float = 0
+            var bestEvidence = OpeningDepthValidator.boundaryEvidence(
+                frame: frame, lines: seed, side: side
+            )
 
-            var previousScore = currentValidation.score
-            var consecutiveEvidence = 0
-            var bestEvidenceScore = 0.0
-            var sideFound = false
-
-            while distances[side] + stepMetres <= maximumExpansionMetres + 0.001 {
-                var trialDistances = distances
-                trialDistances[side] += stepMetres
+            var distance = stepMetres
+            while distance <= maximumExpansionMetres + 0.001 {
+                var trial = SIMD4<Float>(repeating: 0)
+                trial[side] = distance
                 let candidate = adjusted(
                     seed,
-                    left: trialDistances.x,
-                    right: trialDistances.y,
-                    bottom: trialDistances.z,
-                    top: trialDistances.w
+                    left: trial.x,
+                    right: trial.y,
+                    bottom: trial.z,
+                    top: trial.w
                 )
-                let validation = OpeningDepthValidator.validate(frame: frame, lines: candidate)
-                let gain = validation.score - previousScore
-
-                if gain >= 0.04 {
-                    consecutiveEvidence += 1
-                    bestEvidenceScore = max(bestEvidenceScore, min(1.0, gain / 0.12))
-                } else if validation.isOpening {
-                    consecutiveEvidence += 1
-                    bestEvidenceScore = max(bestEvidenceScore, validation.score)
-                } else if gain < -0.06 {
-                    break
-                } else {
-                    consecutiveEvidence = 0
+                let evidence = OpeningDepthValidator.boundaryEvidence(
+                    frame: frame, lines: candidate, side: side
+                )
+                if evidence > bestEvidence {
+                    bestEvidence = evidence
+                    bestDistance = distance
                 }
-
-                distances = trialDistances
-                currentLines = candidate
-                currentValidation = validation
-                previousScore = validation.score
-
-                if consecutiveEvidence >= 2 || validation.score >= 0.70 {
-                    sideFound = true
-                    bestEvidenceScore = max(bestEvidenceScore, validation.score)
-                    break
-                }
+                distance += stepMetres
             }
 
-            if sideFound {
+            // Require a clear local depth step. Zero correction is valid when
+            // the seed itself is already on the physical boundary.
+            if bestEvidence >= 0.55 {
                 found[side] = true
-                evidenceScores[side] = bestEvidenceScore
+                evidenceScores[side] = bestEvidence
+                distances[side] = bestDistance
             } else {
-                // Important: do not publish the search limit as if it were a
-                // measured correction. Revert this side completely.
-                distances[side] = baseDistance
-                currentLines = baseLines
-                currentValidation = baseValidation
-                evidenceScores[side] = bestEvidenceScore
+                found[side] = false
+                evidenceScores[side] = bestEvidence
+                distances[side] = 0
             }
         }
+
+        currentLines = adjusted(
+            seed,
+            left: distances.x,
+            right: distances.y,
+            bottom: distances.z,
+            top: distances.w
+        )
+        currentValidation = OpeningDepthValidator.validate(frame: frame, lines: currentLines)
 
         return OpeningBoundaryRefinement(
             lines: currentLines,

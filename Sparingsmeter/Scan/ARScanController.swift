@@ -256,20 +256,41 @@ final class ARScanController: NSObject, ObservableObject {
             refinement.bottomEvidence
         )
 
-        if validation.isOpening {
+        if validation.isOpening && allPhysicalSidesProven {
             openingValidationState = refinement.expansionMetres > 0
-                ? "Opening bevestigd na randcorrectie"
-                : "Opening bevestigd door diepte"
+                ? "Opening + 4 fysieke randen bevestigd"
+                : "Opening + 4 fysieke randen bevestigd"
+        } else if validation.isOpening {
+            openingValidationState = "Diepte klopt, fysieke randen nog bewijzen"
         } else if refinement.expansionMetres > 0 {
             openingValidationState = "Randen naar buiten gecorrigeerd, opening nog niet bevestigd"
         } else {
             openingValidationState = "Vier lijnen stabiel, opening nog niet bevestigd"
         }
 
-        // 80% comes from the four independently stable sides; the final 20%
-        // is reserved for proving that those sides actually enclose an opening.
-        positionLockProgress = min(1.0, lock.progress * 0.8 + validation.score * 0.2)
-        positionLocked = lock.isLocked && validation.isOpening
+        // A geometric line lock is not yet a physical opening lock.
+        // Each of the four sides must independently prove a physical boundary.
+        let physicalSideCount = [
+            refinement.leftFound,
+            refinement.rightFound,
+            refinement.topFound,
+            refinement.bottomFound
+        ].filter { $0 }.count
+        let physicalSideProgress = Double(physicalSideCount) / 4.0
+        let minimumBoundaryEvidence = 0.55
+        let allPhysicalSidesProven =
+            refinement.leftFound && refinement.leftEvidence >= minimumBoundaryEvidence &&
+            refinement.rightFound && refinement.rightEvidence >= minimumBoundaryEvidence &&
+            refinement.topFound && refinement.topEvidence >= minimumBoundaryEvidence &&
+            refinement.bottomFound && refinement.bottomEvidence >= minimumBoundaryEvidence
+
+        // Stable world-space lines contribute 60%, individually proven physical
+        // boundaries 30%, and opening-depth validation the final 10%.
+        positionLockProgress = min(
+            1.0,
+            lock.progress * 0.6 + physicalSideProgress * 0.3 + validation.score * 0.1
+        )
+        positionLocked = lock.isLocked && allPhysicalSidesProven && validation.isOpening
 
         // Position first: dimensions stay hidden until the physical opening
         // frame itself is stable in ARKit world space.
@@ -282,10 +303,8 @@ final class ARScanController: NSObject, ObservableObject {
             pipelineState = "Positie vergrendeld - maatvoering nog uit"
             NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: refinement.lines)
         } else if lock.isLocked {
-            positionState = refinement.expansionMetres > 0
-                ? "4/4 stabiel - randen naar buiten zoeken"
-                : "4/4 lijnen stabiel - opening controleren"
-            pipelineState = "Nog geen lock: fysieke sparingsrand verder zoeken"
+            positionState = "4/4 stabiel - fysieke randen \(physicalSideCount)/4"
+            pipelineState = "Nog geen lock: fysieke sparingsranden bewijzen"
             NotificationCenter.default.post(name: .sparingsmeterBoundaryLines, object: refinement.lines)
         } else {
             positionState = "Positie stabiliseren \(Int(lock.progress * 100))%"

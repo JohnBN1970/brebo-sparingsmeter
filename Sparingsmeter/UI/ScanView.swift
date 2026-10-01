@@ -85,15 +85,18 @@ struct ScanView: View {
             .font(.caption)
 
             if scanner.positionSideLocks.count == 4 {
-                Text(
-                    "Randcorrectie " +
-                    "L " + (scanner.boundaryRefinementFound.left ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.left) : "?") +
-                    " | R " + (scanner.boundaryRefinementFound.right ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.right) : "?") +
-                    " | B " + (scanner.boundaryRefinementFound.top ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.top) : "?") +
-                    " | O " + (scanner.boundaryRefinementFound.bottom ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.bottom) : "?") +
-                    " mm"
-                )
-                .font(.caption2.monospaced())
+                let leftCorrection = scanner.boundaryRefinementFound.left
+                    ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.left) : "?"
+                let rightCorrection = scanner.boundaryRefinementFound.right
+                    ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.right) : "?"
+                let topCorrection = scanner.boundaryRefinementFound.top
+                    ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.top) : "?"
+                let bottomCorrection = scanner.boundaryRefinementFound.bottom
+                    ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.bottom) : "?"
+                let correctionText = "Randcorrectie L \(leftCorrection) | R \(rightCorrection) | B \(topCorrection) | O \(bottomCorrection) mm"
+
+                Text(correctionText)
+                    .font(.caption2.monospaced())
 
                 Text(
                     String(

@@ -84,14 +84,24 @@ struct ScanView: View {
             }
             .font(.caption)
 
-            if scanner.boundaryRefinementMM > 0 {
+            if scanner.positionSideLocks.count == 4 {
+                Text(
+                    "Randcorrectie " +
+                    "L " + (scanner.boundaryRefinementFound.left ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.left) : "?") +
+                    " | R " + (scanner.boundaryRefinementFound.right ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.right) : "?") +
+                    " | B " + (scanner.boundaryRefinementFound.top ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.top) : "?") +
+                    " | O " + (scanner.boundaryRefinementFound.bottom ? String(format: "%.0f", scanner.boundaryRefinementSidesMM.bottom) : "?") +
+                    " mm"
+                )
+                .font(.caption2.monospaced())
+
                 Text(
                     String(
-                        format: "Randcorrectie L %.0f | R %.0f | B %.0f | O %.0f mm",
-                        scanner.boundaryRefinementSidesMM.left,
-                        scanner.boundaryRefinementSidesMM.right,
-                        scanner.boundaryRefinementSidesMM.top,
-                        scanner.boundaryRefinementSidesMM.bottom
+                        format: "Randbewijs L %.0f%% | R %.0f%% | B %.0f%% | O %.0f%%",
+                        scanner.boundaryRefinementEvidence.left * 100,
+                        scanner.boundaryRefinementEvidence.right * 100,
+                        scanner.boundaryRefinementEvidence.top * 100,
+                        scanner.boundaryRefinementEvidence.bottom * 100
                     )
                 )
                 .font(.caption2.monospaced())

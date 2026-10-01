@@ -215,7 +215,12 @@ final class ARScanController: NSObject, ObservableObject {
         )
 
         let refinement: OpeningBoundaryRefinement
-        if lock.isLocked && !seedValidation.isOpening {
+        // Once the four world-space lines are stable, always run the
+        // physical-boundary refiner. A strong interior depth score proves that
+        // there is an opening, but it does NOT prove where L/R/B/O physically
+        // are. Previously a 100% depth score skipped refinement completely,
+        // which produced 0% evidence on every side.
+        if lock.isLocked {
             refinement = OpeningBoundaryRefiner.refine(frame: frame, seed: seedLines)
         } else {
             refinement = OpeningBoundaryRefinement(

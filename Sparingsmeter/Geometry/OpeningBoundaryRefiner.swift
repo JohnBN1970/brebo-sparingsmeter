@@ -37,7 +37,7 @@ enum OpeningBoundaryRefiner {
         }
 
         var distances = SIMD4<Float>(repeating: 0) // L, R, B, T
-        var found = SIMD4<Bool>(repeating: false)
+        var found = [Bool](repeating: false, count: 4)
         var evidenceScores = SIMD4<Double>(repeating: 0)
         var currentLines = seed
         var currentValidation = OpeningDepthValidator.validate(frame: frame, lines: currentLines)
@@ -113,10 +113,10 @@ enum OpeningBoundaryRefiner {
             rightMetres: distances.y,
             topMetres: distances.w,
             bottomMetres: distances.z,
-            leftFound: found.x,
-            rightFound: found.y,
-            topFound: found.w,
-            bottomFound: found.z,
+            leftFound: found[0],
+            rightFound: found[1],
+            topFound: found[3],
+            bottomFound: found[2],
             leftEvidence: evidenceScores.x,
             rightEvidence: evidenceScores.y,
             topEvidence: evidenceScores.w,

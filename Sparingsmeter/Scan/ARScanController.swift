@@ -256,18 +256,6 @@ final class ARScanController: NSObject, ObservableObject {
             refinement.bottomEvidence
         )
 
-        if validation.isOpening && allPhysicalSidesProven {
-            openingValidationState = refinement.expansionMetres > 0
-                ? "Opening + 4 fysieke randen bevestigd"
-                : "Opening + 4 fysieke randen bevestigd"
-        } else if validation.isOpening {
-            openingValidationState = "Diepte klopt, fysieke randen nog bewijzen"
-        } else if refinement.expansionMetres > 0 {
-            openingValidationState = "Randen naar buiten gecorrigeerd, opening nog niet bevestigd"
-        } else {
-            openingValidationState = "Vier lijnen stabiel, opening nog niet bevestigd"
-        }
-
         // A geometric line lock is not yet a physical opening lock.
         // Each of the four sides must independently prove a physical boundary.
         let physicalSideCount = [
@@ -291,6 +279,16 @@ final class ARScanController: NSObject, ObservableObject {
             lock.progress * 0.6 + physicalSideProgress * 0.3 + validation.score * 0.1
         )
         positionLocked = lock.isLocked && allPhysicalSidesProven && validation.isOpening
+
+        if validation.isOpening && allPhysicalSidesProven {
+            openingValidationState = "Opening + 4 fysieke randen bevestigd"
+        } else if validation.isOpening {
+            openingValidationState = "Diepte klopt, fysieke randen nog bewijzen"
+        } else if refinement.expansionMetres > 0 {
+            openingValidationState = "Randen naar buiten gecorrigeerd, opening nog niet bevestigd"
+        } else {
+            openingValidationState = "Vier lijnen stabiel, opening nog niet bevestigd"
+        }
 
         // Position first: dimensions stay hidden until the physical opening
         // frame itself is stable in ARKit world space.
